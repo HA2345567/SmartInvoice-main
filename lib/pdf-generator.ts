@@ -76,7 +76,7 @@ export class PDFGenerator {
       this.addFooterSection(invoiceData);
 
       // Return the PDF as Uint8Array
-      return this.doc.output('arraybuffer') as Uint8Array;
+      return this.doc.output('arraybuffer') as unknown as Uint8Array;
     } catch (error) {
       console.error('PDF Generation Error:', error);
       throw new Error('Failed to generate PDF');

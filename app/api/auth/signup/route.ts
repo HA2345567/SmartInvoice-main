@@ -62,10 +62,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Generate token
-    const token = AuthService.generateToken(user.id);
+    // Generate token (await if async)
+    const token = await AuthService.generateToken(user.id);
 
-    // Send welcome email (optional, requires email configuration)
+    // Send welcome email
     try {
       if (process.env.EMAIL_HOST && process.env.EMAIL_USER) {
         const emailService = new EmailService({
@@ -85,15 +85,24 @@ export async function POST(request: NextRequest) {
         });
       }
     } catch (emailError) {
-      console.error('Failed to send welcome email:', emailError);
-      // Don't fail the signup if email fails
+      console.error(`Failed to send welcome email to ${user.email}:`, emailError);
     }
 
+    // Sanitize user before returning
+    const safeUser = {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      company: user.company,
+      avatar: user.avatar,
+    };
+
     return NextResponse.json({
-      user,
+      user: safeUser,
       token,
       message: 'Account created successfully!'
     });
+
   } catch (error) {
     console.error('Signup error:', error);
     return NextResponse.json(
