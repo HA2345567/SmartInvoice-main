@@ -51,7 +51,7 @@ export class InvoiceGenerator {
     this.addTotals(invoiceData);
     this.addFooter(invoiceData);
 
-    return this.doc.output('arraybuffer') as Uint8Array;
+    return this.doc.output('arraybuffer') as unknown as Uint8Array;
   }
 
   private addHeader(data: InvoiceData) {
