@@ -85,7 +85,7 @@ export async function POST(request: NextRequest) {
         });
       }
     } catch (emailError) {
-      console.error(`Failed to send welcome email to ${user.email}:`, emailError);
+      console.error(`Failed to send welcome email to ${user.email}:`, emailError instanceof Error ? emailError.stack : emailError);
     }
 
     // Sanitize user before returning
