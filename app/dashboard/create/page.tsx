@@ -43,7 +43,7 @@ export default function CreateInvoice() {
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [clientSearch, setClientSearch] = useState('');
   const [showClientDropdown, setShowClientDropdown] = useState(false);
-  const [itemSuggestions, setItemSuggestions] = useState<string[]>([]);
+  const [itemSuggestions, setItemSuggestions] = useState<any[]>([]);
   const [showPreviewDialog, setShowPreviewDialog] = useState(false);
   const [previewLoading, setPreviewLoading] = useState(false);
   
@@ -692,11 +692,11 @@ export default function CreateInvoice() {
                                 key={idx}
                                 className="p-2 hover:bg-green-500/20 cursor-pointer text-sm text-white"
                                 onClick={() => {
-                                  updateItem(item.id, 'description', suggestion);
+                                  updateItem(item.id, 'description', suggestion.description);
                                   setItemSuggestions([]);
                                 }}
                               >
-                                {suggestion}
+                                {suggestion.description}
                               </div>
                             ))}
                           </div>

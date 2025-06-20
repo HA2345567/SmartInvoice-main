@@ -82,12 +82,6 @@ export default function LandingPage() {
                 <ArrowRight className="ml-2 w-5 h-5" />
               </Button>
             </Link>
-            <Link href="/auth/login">
-              <Button size="lg" variant="outline" className="w-full sm:w-auto border-green-500/50 text-green-400 hover:bg-green-500/10 hover:border-green-400 text-lg px-8 py-4">
-                <BarChart3 className="mr-2 w-5 h-5" />
-                View Demo
-              </Button>
-            </Link>
           </div>
 
           {/* Trust indicators */}
@@ -243,12 +237,6 @@ export default function LandingPage() {
                 <Button size="lg" className="w-full sm:w-auto bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-black font-bold text-lg px-8 py-4 shadow-2xl green-glow">
                   <Sparkles className="mr-2 w-5 h-5" />
                   Start Free Trial
-                </Button>
-              </Link>
-              <Link href="/auth/login">
-                <Button size="lg" variant="outline" className="w-full sm:w-auto border-green-500/50 text-green-400 hover:bg-green-500/10 hover:border-green-400 text-lg px-8 py-4">
-                  <Shield className="mr-2 w-5 h-5" />
-                  View Demo
                 </Button>
               </Link>
             </div>

@@ -30,16 +30,26 @@ export class EmailService {
 
   async sendEmail(emailData: EmailData): Promise<boolean> {
     try {
-      await this.transporter.sendMail({
+      const info = await this.transporter.sendMail({
         from: process.env.EMAIL_FROM || 'noreply@smartinvoice.com',
         to: emailData.to,
         subject: emailData.subject,
         html: emailData.html,
         attachments: emailData.attachments,
       });
+      console.log('Email sent successfully:', {
+        messageId: info.messageId,
+        to: emailData.to,
+        subject: emailData.subject,
+        response: info.response
+      });
       return true;
     } catch (error) {
-      console.error('Email sending failed:', error);
+      console.error('Email sending failed:', {
+        to: emailData.to,
+        subject: emailData.subject,
+        error
+      });
       return false;
     }
   }

@@ -92,28 +92,3 @@ export class AuthService {
     return !!user;
   }
 }
-
-// Initialize with demo user
-const initializeAuth = async () => {
-  try {
-    const demoUser = await DatabaseService.getUserByEmail('demo@smartinvoice.com');
-    
-    if (!demoUser) {
-      await AuthService.createUser({
-        email: 'demo@smartinvoice.com',
-        password: 'demo123',
-        name: 'Demo User',
-        company: 'SmartInvoice Demo',
-      });
-      
-      console.log('Demo user created:');
-      console.log('Email: demo@smartinvoice.com');
-      console.log('Password: demo123');
-    }
-  } catch (error) {
-    console.error('Error initializing auth:', error);
-  }
-};
-
-// Initialize immediately when module is loaded
-initializeAuth();

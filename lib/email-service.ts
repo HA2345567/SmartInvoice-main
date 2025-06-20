@@ -46,10 +46,19 @@ export class EmailService {
         attachments: emailData.attachments,
       });
       
-      console.log('Email sent successfully:', info.messageId);
+      console.log('Email sent successfully:', {
+        messageId: info.messageId,
+        to: emailData.to,
+        subject: emailData.subject,
+        response: info.response
+      });
       return true;
     } catch (error) {
-      console.error('Email sending failed:', error);
+      console.error('Email sending failed:', {
+        to: emailData.to,
+        subject: emailData.subject,
+        error
+      });
       return false;
     }
   }

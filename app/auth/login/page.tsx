@@ -12,8 +12,8 @@ import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 
 export default function LoginPage() {
-  const [email, setEmail] = useState('demo@smartinvoice.com');
-  const [password, setPassword] = useState('demo123');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
@@ -137,21 +137,6 @@ export default function LoginPage() {
                       <Eye className="w-4 h-4" />
                     )}
                   </Button>
-                </div>
-              </div>
-              
-              {/* Demo credentials notice */}
-              <div className="notification-green p-4">
-                <div className="flex items-start space-x-3">
-                  <div className="w-6 h-6 bg-green-500/20 rounded-full flex items-center justify-center mt-0.5">
-                    <Sparkles className="w-4 h-4 text-green-primary" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-green-primary">Demo Account Ready</p>
-                    <p className="text-sm text-green-muted mt-1">
-                      Use the pre-filled credentials to explore SmartInvoice, or create your own account.
-                    </p>
-                  </div>
                 </div>
               </div>
 
