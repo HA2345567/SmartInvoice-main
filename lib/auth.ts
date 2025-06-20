@@ -3,10 +3,12 @@ import jwt from 'jsonwebtoken';
 import { NextRequest } from 'next/server';
 import { DatabaseService } from './database';
 
-const JWT_SECRET = process.env.JWT_SECRET;
-
-if (!JWT_SECRET || JWT_SECRET === 'your-super-secret-jwt-key-change-in-production') {
-  throw new Error('JWT_SECRET environment variable is not set. Please set it in your environment variables for security.');
+function getJwtSecret(): string {
+  const secret = process.env.JWT_SECRET;
+  if (!secret || secret === 'your-super-secret-jwt-key-change-in-production') {
+    throw new Error('JWT_SECRET environment variable is not set. Please set it in your environment variables for security.');
+  }
+  return secret;
 }
 
 export interface User {
@@ -29,12 +31,12 @@ export class AuthService {
   }
 
   static generateToken(userId: string): string {
-    return jwt.sign({ userId }, JWT_SECRET as string, { expiresIn: '7d' });
+    return jwt.sign({ userId }, getJwtSecret(), { expiresIn: '7d' });
   }
 
   static verifyToken(token: string): { userId: string } | null {
     try {
-      return jwt.verify(token, JWT_SECRET as string) as unknown as { userId: string };
+      return jwt.verify(token, getJwtSecret()) as unknown as { userId: string };
     } catch {
       return null;
     }
