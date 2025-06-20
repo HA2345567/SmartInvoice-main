@@ -1,7 +1,13 @@
-import sqlite3 from 'sqlite3';
-import { open, Database } from 'sqlite';
+// @ts-ignore
+// If you see a 'Cannot find module \"pg\"' error, run: npm install pg
+import { Pool } from 'pg';
 import { v4 as uuidv4 } from 'uuid';
 import path from 'path';
+
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: { rejectUnauthorized: false }
+});
 
 export interface Invoice {
   id: string;
@@ -59,17 +65,17 @@ export interface InvoiceItem {
   amount: number;
 }
 
-let dbPromise: Promise<Database> | null = null;
+let dbPromise: Promise<any> | null = null;
 
 export class DatabaseService {
-  private static async getDb(): Promise<Database> {
+  private static async getDb(): Promise<any> {
     if (!dbPromise) {
       dbPromise = this.initializeDatabase();
     }
     return dbPromise;
   }
 
-  private static async initializeDatabase(): Promise<Database> {
+  private static async initializeDatabase(): Promise<any> {
     const dbPath = path.join(process.cwd(), 'data', 'smartinvoice.db');
     
     // Ensure data directory exists
@@ -79,20 +85,18 @@ export class DatabaseService {
       fs.mkdirSync(dataDir, { recursive: true });
     }
 
-    const db = await open({
-      filename: dbPath,
-      driver: sqlite3.Database
-    });
-
-    await db.exec('PRAGMA busy_timeout = 5000');
-
-    await this.initializeTables(db);
-    return db;
+    const client = await pool.connect();
+    try {
+      await this.initializeTables(client);
+      return client;
+    } finally {
+      client.release();
+    }
   }
 
-  private static async initializeTables(database: Database): Promise<void> {
+  private static async initializeTables(client: any): Promise<void> {
     // Create users table
-    await database.exec(`
+    await client.query(`
       CREATE TABLE IF NOT EXISTS users (
         id TEXT PRIMARY KEY,
         email TEXT UNIQUE NOT NULL,
@@ -106,7 +110,7 @@ export class DatabaseService {
     `);
 
     // Create clients table
-    await database.exec(`
+    await client.query(`
       CREATE TABLE IF NOT EXISTS clients (
         id TEXT PRIMARY KEY,
         userId TEXT NOT NULL,
@@ -125,7 +129,7 @@ export class DatabaseService {
     `);
 
     // Create invoices table
-    await database.exec(`
+    await client.query(`
       CREATE TABLE IF NOT EXISTS invoices (
         id TEXT PRIMARY KEY,
         userId TEXT NOT NULL,
@@ -165,7 +169,7 @@ export class DatabaseService {
     `);
 
     // Create indexes for better performance
-    await database.exec(`
+    await client.query(`
       CREATE INDEX IF NOT EXISTS idx_invoices_userId ON invoices(userId);
       CREATE INDEX IF NOT EXISTS idx_invoices_status ON invoices(status);
       CREATE INDEX IF NOT EXISTS idx_invoices_dueDate ON invoices(dueDate);
@@ -183,59 +187,65 @@ export class DatabaseService {
     name: string;
     company?: string;
   }): Promise<{ user: any; exists: boolean }> {
-    const database = await this.getDb();
-    
-    // Check if user exists
-    const existingUser = await database.get(
-      'SELECT * FROM users WHERE email = ?',
-      [userData.email.toLowerCase()]
-    );
+    const client = await pool.connect();
+    try {
+      // Check if user exists
+      const res = await client.query('SELECT * FROM users WHERE email = $1', [userData.email.toLowerCase()]);
+      if (res.rows.length > 0) {
+        const { password, ...userWithoutPassword } = res.rows[0];
+        return { user: userWithoutPassword, exists: true };
+      }
 
-    if (existingUser) {
-      const { password, ...userWithoutPassword } = existingUser;
-      return { user: userWithoutPassword, exists: true };
+      const user = {
+        id: uuidv4(),
+        email: userData.email.toLowerCase(),
+        password: userData.password,
+        name: userData.name,
+        company: userData.company,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+
+      await client.query(
+        `INSERT INTO users (id, email, password, name, company, createdAt, updatedAt)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [user.id, user.email, user.password, user.name, user.company, user.createdAt, user.updatedAt]
+      );
+
+      const { password, ...userWithoutPassword } = user;
+      return { user: userWithoutPassword, exists: false };
+    } finally {
+      client.release();
     }
-
-    const user = {
-      id: uuidv4(),
-      email: userData.email.toLowerCase(),
-      password: userData.password, // Should be hashed in production
-      name: userData.name,
-      company: userData.company,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-
-    await database.run(
-      `INSERT INTO users (id, email, password, name, company, createdAt, updatedAt)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [user.id, user.email, user.password, user.name, user.company, user.createdAt, user.updatedAt]
-    );
-
-    const { password, ...userWithoutPassword } = user;
-    return { user: userWithoutPassword, exists: false };
   }
 
   static async getUserByEmail(email: string): Promise<any | null> {
-    const database = await this.getDb();
-    return await database.get('SELECT * FROM users WHERE email = ?', [email.toLowerCase()]);
+    const client = await pool.connect();
+    try {
+      const res = await client.query('SELECT * FROM users WHERE email = $1', [email.toLowerCase()]);
+      return res.rows[0] || null;
+    } finally {
+      client.release();
+    }
   }
 
   static async getUserById(id: string): Promise<any | null> {
-    const database = await this.getDb();
-    const user = await database.get('SELECT * FROM users WHERE id = ?', [id]);
-    if (user) {
-      const { password, ...userWithoutPassword } = user;
-      return userWithoutPassword;
+    const client = await pool.connect();
+    try {
+      const res = await client.query('SELECT * FROM users WHERE id = $1', [id]);
+      if (res.rows[0]) {
+        const { password, ...userWithoutPassword } = res.rows[0];
+        return userWithoutPassword;
+      }
+      return null;
+    } finally {
+      client.release();
     }
-    return null;
   }
 
   // Client operations
   static async createClient(userId: string, clientData: Omit<Client, 'id' | 'userId' | 'isActive' | 'createdAt' | 'updatedAt'>): Promise<Client> {
-    const database = await this.getDb();
-    
-    const client: Client = {
+    const client = {
       id: uuidv4(),
       userId,
       ...clientData,
@@ -243,234 +253,188 @@ export class DatabaseService {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
-
-    await database.run(
-      `INSERT INTO clients (id, userId, name, email, company, address, gstNumber, currency, isActive, createdAt, updatedAt)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [client.id, client.userId, client.name, client.email, client.company, client.address, 
-       client.gstNumber, client.currency, client.isActive, client.createdAt, client.updatedAt]
-    );
-
-    return client;
+    const db = await pool.connect();
+    try {
+      await db.query(
+        `INSERT INTO clients (id, userId, name, email, company, address, gstNumber, currency, isActive, createdAt, updatedAt)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+        [client.id, client.userId, client.name, client.email, client.company, client.address, client.gstNumber, client.currency, client.isActive, client.createdAt, client.updatedAt]
+      );
+      return client;
+    } finally {
+      db.release();
+    }
   }
 
   static async getClients(userId: string): Promise<any[]> {
-    const database = await this.getDb();
-    
-    const clients = await database.all(`
-      SELECT c.*,
-             COUNT(i.id) as totalInvoices,
-             COALESCE(SUM(CASE WHEN i.status = 'paid' THEN i.amount ELSE 0 END), 0) as totalAmount,
-             MAX(i.date) as lastInvoiceDate
-      FROM clients c
-      LEFT JOIN invoices i ON c.id = i.clientId
-      WHERE c.userId = ?
-      GROUP BY c.id
-      ORDER BY totalAmount DESC
-    `, [userId]);
-
-    return clients;
+    const db = await pool.connect();
+    try {
+      const res = await db.query('SELECT * FROM clients WHERE userId = $1', [userId]);
+      return res.rows;
+    } finally {
+      db.release();
+    }
   }
 
   static async getClientById(userId: string, id: string): Promise<Client | null> {
-    const database = await this.getDb();
-    const result = await database.get('SELECT * FROM clients WHERE id = ? AND userId = ?', [id, userId]);
-    return result ?? null;
+    const client = await pool.connect();
+    try {
+      const res = await client.query('SELECT * FROM clients WHERE id = $1 AND userId = $2', [id, userId]);
+      return res.rows[0] || null;
+    } finally {
+      client.release();
+    }
   }
 
   static async updateClient(userId: string, id: string, updates: Partial<Client>): Promise<Client | null> {
-    const database = await this.getDb();
-    
-    const setClause = Object.keys(updates).map(key => `${key} = ?`).join(', ');
-    const values = [...Object.values(updates), new Date().toISOString(), id, userId];
-    
-    await database.run(
-      `UPDATE clients SET ${setClause}, updatedAt = ? WHERE id = ? AND userId = ?`,
-      values
-    );
+    const client = await pool.connect();
+    try {
+      const setClause = Object.keys(updates).map(key => `${key} = $${Object.keys(updates).indexOf(key) + 1}`).join(', ');
+      const values = [...Object.values(updates), new Date().toISOString(), id, userId];
+      
+      await client.query(
+        `UPDATE clients SET ${setClause}, updatedAt = $${values.length - 2} WHERE id = $${values.length - 1} AND userId = $${values.length}`,
+        values
+      );
 
-    return await this.getClientById(userId, id);
+      return await this.getClientById(userId, id);
+    } finally {
+      client.release();
+    }
   }
 
   static async deleteClient(userId: string, id: string): Promise<boolean> {
-    const database = await this.getDb();
-    
-    const result = await database.run(
-      'DELETE FROM clients WHERE id = ? AND userId = ?',
-      [id, userId]
-    );
-
-    return result.changes! > 0;
+    const client = await pool.connect();
+    try {
+      const res = await client.query('DELETE FROM clients WHERE id = $1 AND userId = $2', [id, userId]);
+      return res.rowCount > 0;
+    } finally {
+      client.release();
+    }
   }
 
   static async clientHasInvoices(userId: string, clientId: string): Promise<boolean> {
-    const database = await this.getDb();
-    
-    const result = await database.get(
-      'SELECT COUNT(*) as count FROM invoices WHERE clientId = ? AND userId = ?',
-      [clientId, userId]
-    );
-
-    return result.count > 0;
+    const client = await pool.connect();
+    try {
+      const res = await client.query('SELECT COUNT(*) as count FROM invoices WHERE clientId = $1 AND userId = $2', [clientId, userId]);
+      return res.rows[0].count > 0;
+    } finally {
+      client.release();
+    }
   }
 
   // Invoice operations
   static async createInvoice(userId: string, invoiceData: any): Promise<any> {
-    const database = await this.getDb();
-    
-    // Get or create client
-    let clientId = await this.getOrCreateClientId(userId, invoiceData.clientEmail, {
-      name: invoiceData.clientName,
-      email: invoiceData.clientEmail,
-      company: invoiceData.clientCompany,
-      address: invoiceData.clientAddress,
-      gstNumber: invoiceData.clientGST,
-      currency: invoiceData.clientCurrency,
-    });
-
     const invoice = {
       id: uuidv4(),
       userId,
-      clientId,
       ...invoiceData,
-      items: JSON.stringify(invoiceData.items),
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
-
-    await database.run(`
-      INSERT INTO invoices (
-        id, userId, invoiceNumber, clientId, clientName, clientEmail, clientCompany,
-        clientAddress, clientGST, clientCurrency, amount, subtotal, taxAmount, discountAmount,
-        status, date, dueDate, items, notes, terms, taxRate, discountRate, paymentLink,
-        emailSent, remindersSent, createdAt, updatedAt
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `, [
-      invoice.id, invoice.userId, invoice.invoiceNumber, invoice.clientId, invoice.clientName,
-      invoice.clientEmail, invoice.clientCompany, invoice.clientAddress, invoice.clientGST,
-      invoice.clientCurrency, invoice.amount, invoice.subtotal, invoice.taxAmount,
-      invoice.discountAmount, invoice.status, invoice.date, invoice.dueDate, invoice.items,
-      invoice.notes, invoice.terms, invoice.taxRate, invoice.discountRate, invoice.paymentLink,
-      invoice.emailSent, invoice.remindersSent, invoice.createdAt, invoice.updatedAt
-    ]);
-
-    // Parse items back to object for return
-    const returnInvoice = { ...invoice, items: invoiceData.items };
-    return returnInvoice;
+    const db = await pool.connect();
+    try {
+      await db.query(
+        `INSERT INTO invoices (id, userId, invoiceNumber, clientId, clientName, clientEmail, clientCompany, clientAddress, clientGST, clientCurrency, amount, subtotal, taxAmount, discountAmount, status, date, dueDate, paidDate, paymentMethod, paymentNotes, items, notes, terms, taxRate, discountRate, paymentLink, emailSent, remindersSent, lastReminderSent, createdAt, updatedAt)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30)`,
+        [invoice.id, invoice.userId, invoice.invoiceNumber, invoice.clientId, invoice.clientName, invoice.clientEmail, invoice.clientCompany, invoice.clientAddress, invoice.clientGST, invoice.clientCurrency, invoice.amount, invoice.subtotal, invoice.taxAmount, invoice.discountAmount, invoice.status, invoice.date, invoice.dueDate, invoice.paidDate, invoice.paymentMethod, invoice.paymentNotes, invoice.items, invoice.notes, invoice.terms, invoice.taxRate, invoice.discountRate, invoice.paymentLink, invoice.emailSent, invoice.remindersSent, invoice.lastReminderSent, invoice.createdAt, invoice.updatedAt]
+      );
+      return invoice;
+    } finally {
+      db.release();
+    }
   }
 
   static async getInvoices(userId: string): Promise<any[]> {
-    const database = await this.getDb();
-    
-    const invoices = await database.all(`
-      SELECT * FROM invoices 
-      WHERE userId = ? 
-      ORDER BY createdAt DESC
-    `, [userId]);
+    const db = await pool.connect();
+    try {
+      const res = await db.query('SELECT * FROM invoices WHERE userId = $1', [userId]);
+      return res.rows;
+    } finally {
+      db.release();
+    }
+  }
 
-    // Parse items JSON and update overdue status
-    const today = new Date();
-    return invoices.map(invoice => {
+  static async getInvoiceById(userId: string, id: string): Promise<any | null> {
+    const client = await pool.connect();
+    try {
+      const res = await client.query('SELECT * FROM invoices WHERE id = $1 AND userId = $2', [id, userId]);
+      if (!res.rows[0]) return null;
+
       const parsedInvoice = {
-        ...invoice,
-        items: JSON.parse(invoice.items),
-        emailSent: Boolean(invoice.emailSent)
+        ...res.rows[0],
+        items: JSON.parse(res.rows[0].items),
+        emailSent: Boolean(res.rows[0].emailSent)
       };
 
       // Auto-update overdue status
       if (parsedInvoice.status === 'sent') {
         const dueDate = new Date(parsedInvoice.dueDate);
+        const today = new Date();
         if (dueDate < today) {
           parsedInvoice.status = 'overdue';
-          // Update in database asynchronously
-          this.updateInvoice(userId, invoice.id, { status: 'overdue' });
+          await this.updateInvoice(userId, id, { status: 'overdue' });
         }
       }
 
       return parsedInvoice;
-    });
-  }
-
-  static async getInvoiceById(userId: string, id: string): Promise<any | null> {
-    const database = await this.getDb();
-    
-    const invoice = await database.get(
-      'SELECT * FROM invoices WHERE id = ? AND userId = ?',
-      [id, userId]
-    );
-
-    if (!invoice) return null;
-
-    const parsedInvoice = {
-      ...invoice,
-      items: JSON.parse(invoice.items),
-      emailSent: Boolean(invoice.emailSent)
-    };
-
-    // Auto-update overdue status
-    if (parsedInvoice.status === 'sent') {
-      const dueDate = new Date(parsedInvoice.dueDate);
-      const today = new Date();
-      if (dueDate < today) {
-        parsedInvoice.status = 'overdue';
-        await this.updateInvoice(userId, id, { status: 'overdue' });
-      }
+    } finally {
+      client.release();
     }
-
-    return parsedInvoice;
   }
 
   static async updateInvoice(userId: string, id: string, updates: any): Promise<any | null> {
-    const database = await this.getDb();
-    
-    const updateData = { ...updates, updatedAt: new Date().toISOString() };
-    
-    // Handle items serialization
-    if (updateData.items) {
-      updateData.items = JSON.stringify(updateData.items);
+    const client = await pool.connect();
+    try {
+      const updateData = { ...updates, updatedAt: new Date().toISOString() };
+      
+      // Handle items serialization
+      if (updateData.items) {
+        updateData.items = JSON.stringify(updateData.items);
+      }
+
+      const setClause = Object.keys(updateData).map(key => `${key} = $${Object.keys(updateData).indexOf(key) + 1}`).join(', ');
+      const values = [...Object.values(updateData), id, userId];
+      
+      await client.query(
+        `UPDATE invoices SET ${setClause} WHERE id = $${values.length - 2} AND userId = $${values.length - 1}`,
+        values
+      );
+
+      return await this.getInvoiceById(userId, id);
+    } finally {
+      client.release();
     }
-
-    const setClause = Object.keys(updateData).map(key => `${key} = ?`).join(', ');
-    const values = [...Object.values(updateData), id, userId];
-    
-    await database.run(
-      `UPDATE invoices SET ${setClause} WHERE id = ? AND userId = ?`,
-      values
-    );
-
-    return await this.getInvoiceById(userId, id);
   }
 
   static async deleteInvoice(userId: string, id: string): Promise<boolean> {
-    const database = await this.getDb();
-    
-    const result = await database.run(
-      'DELETE FROM invoices WHERE id = ? AND userId = ?',
-      [id, userId]
-    );
-
-    return result.changes! > 0;
+    const client = await pool.connect();
+    try {
+      const res = await client.query('DELETE FROM invoices WHERE id = $1 AND userId = $2', [id, userId]);
+      return res.rowCount > 0;
+    } finally {
+      client.release();
+    }
   }
 
   // Helper methods
   private static async getOrCreateClientId(userId: string, email: string, clientData?: any): Promise<string> {
-    const database = await this.getDb();
-    
-    const existingClient = await database.get(
-      'SELECT id FROM clients WHERE email = ? AND userId = ?',
-      [email, userId]
-    );
+    const client = await pool.connect();
+    try {
+      const res = await client.query('SELECT id FROM clients WHERE email = $1 AND userId = $2', [email, userId]);
+      if (res.rows.length > 0) {
+        return res.rows[0].id;
+      }
 
-    if (existingClient) {
-      return existingClient.id;
+      if (clientData) {
+        const client = await this.createClient(userId, clientData);
+        return client.id;
+      }
+
+      return uuidv4();
+    } finally {
+      client.release();
     }
-
-    if (clientData) {
-      const client = await this.createClient(userId, clientData);
-      return client.id;
-    }
-
-    return uuidv4();
   }
 
   static generateInvoiceNumber(userId: string): string {
@@ -482,146 +446,145 @@ export class DatabaseService {
 
   // Analytics
   static async getAnalytics(userId: string): Promise<any> {
-    const database = await this.getDb();
-    
-    const invoices = await this.getInvoices(userId);
-    const clients = await this.getClients(userId);
+    const db = await pool.connect();
+    try {
+      const invoicesRes = await db.query('SELECT * FROM invoices WHERE userId = $1', [userId]);
+      const clientsRes = await db.query('SELECT * FROM clients WHERE userId = $1', [userId]);
+      const invoices = invoicesRes.rows;
+      const clients = clientsRes.rows;
 
-    const totalRevenue = invoices
-      .filter(inv => inv.status === 'paid')
-      .reduce((sum, inv) => sum + inv.amount, 0);
-
-    const paidAmount = totalRevenue;
-    const unpaidAmount = invoices
-      .filter(inv => inv.status === 'sent')
-      .reduce((sum, inv) => sum + inv.amount, 0);
-
-    const overdueAmount = invoices
-      .filter(inv => inv.status === 'overdue')
-      .reduce((sum, inv) => sum + inv.amount, 0);
-
-    const currentMonth = new Date().getMonth();
-    const currentYear = new Date().getFullYear();
-
-    const monthlyRevenue = invoices
-      .filter(inv => {
+      const totalRevenue = invoices.filter((inv: any) => inv.status === 'paid').reduce((sum: number, inv: any) => sum + Number(inv.amount), 0);
+      const paidAmount = totalRevenue;
+      const unpaidAmount = invoices.filter((inv: any) => inv.status === 'sent').reduce((sum: number, inv: any) => sum + Number(inv.amount), 0);
+      const overdueAmount = invoices.filter((inv: any) => inv.status === 'overdue').reduce((sum: number, inv: any) => sum + Number(inv.amount), 0);
+      const currentMonth = new Date().getMonth();
+      const currentYear = new Date().getFullYear();
+      const monthlyRevenue = invoices.filter((inv: any) => {
         const invoiceDate = new Date(inv.date);
-        return inv.status === 'paid' && 
-               invoiceDate.getMonth() === currentMonth && 
-               invoiceDate.getFullYear() === currentYear;
-      })
-      .reduce((sum, inv) => sum + inv.amount, 0);
-
-    // Generate monthly data for the last 6 months
-    const monthlyData = [];
-    for (let i = 5; i >= 0; i--) {
-      const date = new Date();
-      date.setMonth(date.getMonth() - i);
-      const month = date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
-      
-      const monthInvoices = invoices.filter(inv => {
-        const invoiceDate = new Date(inv.date);
-        return invoiceDate.getMonth() === date.getMonth() && 
-               invoiceDate.getFullYear() === date.getFullYear() &&
-               inv.status === 'paid';
-      });
-      
-      monthlyData.push({
-        month,
-        revenue: monthInvoices.reduce((sum, inv) => sum + inv.amount, 0),
-        invoices: monthInvoices.length,
-      });
+        return inv.status === 'paid' && invoiceDate.getMonth() === currentMonth && invoiceDate.getFullYear() === currentYear;
+      }).reduce((sum: number, inv: any) => sum + Number(inv.amount), 0);
+      // Generate monthly data for the last 6 months
+      const monthlyData = [];
+      for (let i = 5; i >= 0; i--) {
+        const date = new Date();
+        date.setMonth(date.getMonth() - i);
+        const month = date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+        const monthInvoices = invoices.filter((inv: any) => {
+          const invoiceDate = new Date(inv.date);
+          return invoiceDate.getMonth() === date.getMonth() && invoiceDate.getFullYear() === date.getFullYear() && inv.status === 'paid';
+        });
+        monthlyData.push({
+          month,
+          revenue: monthInvoices.reduce((sum: number, inv: any) => sum + Number(inv.amount), 0),
+          invoices: monthInvoices.length,
+        });
+      }
+      const paidInvoices = invoices.filter((i: any) => i.status === 'paid').length;
+      const unpaidInvoices = invoices.filter((i: any) => i.status === 'sent').length;
+      const overdueInvoices = invoices.filter((i: any) => i.status === 'overdue').length;
+      const draftInvoices = invoices.filter((i: any) => i.status === 'draft').length;
+      return {
+        totalRevenue,
+        paidAmount,
+        unpaidAmount,
+        overdueAmount,
+        monthlyRevenue,
+        totalInvoices: invoices.length,
+        paidInvoices,
+        unpaidInvoices,
+        overdueInvoices,
+        draftInvoices,
+        averageInvoiceValue: paidInvoices > 0 ? totalRevenue / paidInvoices : 0,
+        topClients: clients.sort((a: any, b: any) => (b.totalAmount || 0) - (a.totalAmount || 0)).slice(0, 5),
+        monthlyData,
+      };
+    } finally {
+      db.release();
     }
-
-    const paidInvoices = invoices.filter(i => i.status === 'paid').length;
-    const unpaidInvoices = invoices.filter(i => i.status === 'sent').length;
-    const overdueInvoices = invoices.filter(i => i.status === 'overdue').length;
-    const draftInvoices = invoices.filter(i => i.status === 'draft').length;
-
-    return {
-      totalRevenue,
-      paidAmount,
-      unpaidAmount,
-      overdueAmount,
-      monthlyRevenue,
-      totalInvoices: invoices.length,
-      paidInvoices,
-      unpaidInvoices,
-      overdueInvoices,
-      draftInvoices,
-      averageInvoiceValue: paidInvoices > 0 ? totalRevenue / paidInvoices : 0,
-      topClients: clients
-        .sort((a, b) => b.totalAmount - a.totalAmount)
-        .slice(0, 5),
-      monthlyData,
-    };
   }
 
   // Export functions
   static async exportInvoicesCSV(userId: string): Promise<string> {
-    const invoices = await this.getInvoices(userId);
-    
-    const headers = [
-      'Invoice Number', 'Client Name', 'Client Email', 'Client Company',
-      'Amount', 'Currency', 'Status', 'Invoice Date', 'Due Date', 'Paid Date',
-      'Payment Method', 'Tax Rate (%)', 'Discount Rate (%)', 'Subtotal',
-      'Tax Amount', 'Discount Amount', 'Notes', 'Terms', 'Created Date', 'Updated Date'
-    ];
-    
-    const rows = invoices.map(invoice => [
-      invoice.invoiceNumber || '',
-      invoice.clientName || '',
-      invoice.clientEmail || '',
-      invoice.clientCompany || '',
-      (invoice.amount || 0).toFixed(2),
-      invoice.clientCurrency || '$',
-      invoice.status || '',
-      invoice.date || '',
-      invoice.dueDate || '',
-      invoice.paidDate || '',
-      invoice.paymentMethod || '',
-      (invoice.taxRate || 0).toString(),
-      (invoice.discountRate || 0).toString(),
-      (invoice.subtotal || 0).toFixed(2),
-      (invoice.taxAmount || 0).toFixed(2),
-      (invoice.discountAmount || 0).toFixed(2),
-      (invoice.notes || '').replace(/"/g, '""'),
-      (invoice.terms || '').replace(/"/g, '""'),
-      invoice.createdAt ? new Date(invoice.createdAt).toLocaleDateString() : '',
-      invoice.updatedAt ? new Date(invoice.updatedAt).toLocaleDateString() : ''
-    ]);
-    
-    return [headers, ...rows]
-      .map(row => row.map(field => `"${field}"`).join(','))
-      .join('\n');
+    const client = await pool.connect();
+    try {
+      const res = await client.query(`
+        SELECT * FROM invoices 
+        WHERE userId = $1 
+        ORDER BY createdAt DESC
+      `, [userId]);
+
+      const headers = [
+        'Invoice Number', 'Client Name', 'Client Email', 'Client Company',
+        'Amount', 'Currency', 'Status', 'Invoice Date', 'Due Date', 'Paid Date',
+        'Payment Method', 'Tax Rate (%)', 'Discount Rate (%)', 'Subtotal',
+        'Tax Amount', 'Discount Amount', 'Notes', 'Terms', 'Created Date', 'Updated Date'
+      ];
+      
+      const rows = res.rows.map((invoice: any) => [
+        invoice.invoiceNumber || '',
+        invoice.clientName || '',
+        invoice.clientEmail || '',
+        invoice.clientCompany || '',
+        (invoice.amount || 0).toFixed(2),
+        invoice.clientCurrency || '$',
+        invoice.status || '',
+        invoice.date || '',
+        invoice.dueDate || '',
+        invoice.paidDate || '',
+        invoice.paymentMethod || '',
+        (invoice.taxRate || 0).toString(),
+        (invoice.discountRate || 0).toString(),
+        (invoice.subtotal || 0).toFixed(2),
+        (invoice.taxAmount || 0).toFixed(2),
+        (invoice.discountAmount || 0).toFixed(2),
+        (invoice.notes || '').replace(/"/g, '""'),
+        (invoice.terms || '').replace(/"/g, '""'),
+        invoice.createdAt ? new Date(invoice.createdAt).toLocaleDateString() : '',
+        invoice.updatedAt ? new Date(invoice.updatedAt).toLocaleDateString() : ''
+      ]);
+      
+      return [headers, ...rows]
+        .map((row: any[]) => row.map((field: unknown) => `"${String(field)}"`).join(','))
+        .join('\n');
+    } finally {
+      client.release();
+    }
   }
 
   static async exportClientsCSV(userId: string): Promise<string> {
-    const clients = await this.getClients(userId);
-    
-    const headers = [
-      'Name', 'Email', 'Company', 'Address', 'GST/VAT Number', 'Currency',
-      'Total Invoices', 'Total Amount', 'Last Invoice Date', 'Status',
-      'Created Date', 'Updated Date'
-    ];
-    
-    const rows = clients.map(client => [
-      client.name || '',
-      client.email || '',
-      client.company || '',
-      (client.address || '').replace(/\n/g, ' ').replace(/"/g, '""'),
-      client.gstNumber || '',
-      client.currency || '',
-      (client.totalInvoices || 0).toString(),
-      (client.totalAmount || 0).toFixed(2),
-      client.lastInvoiceDate || '',
-      client.isActive ? 'Active' : 'Inactive',
-      client.createdAt ? new Date(client.createdAt).toLocaleDateString() : '',
-      client.updatedAt ? new Date(client.updatedAt).toLocaleDateString() : ''
-    ]);
-    
-    return [headers, ...rows]
-      .map(row => row.map(field => `"${field}"`).join(','))
-      .join('\n');
+    const client = await pool.connect();
+    try {
+      const res = await client.query(`
+        SELECT * FROM clients 
+        WHERE userId = $1
+      `, [userId]);
+
+      const headers = [
+        'Name', 'Email', 'Company', 'Address', 'GST/VAT Number', 'Currency',
+        'Total Invoices', 'Total Amount', 'Last Invoice Date', 'Status',
+        'Created Date', 'Updated Date'
+      ];
+      
+      const rows = res.rows.map((client: any) => [
+        client.name || '',
+        client.email || '',
+        client.company || '',
+        (client.address || '').replace(/\n/g, ' ').replace(/"/g, '""'),
+        client.gstNumber || '',
+        client.currency || '',
+        (client.totalInvoices || 0).toString(),
+        (client.totalAmount || 0).toFixed(2),
+        client.lastInvoiceDate || '',
+        client.isActive ? 'Active' : 'Inactive',
+        client.createdAt ? new Date(client.createdAt).toLocaleDateString() : '',
+        client.updatedAt ? new Date(client.updatedAt).toLocaleDateString() : ''
+      ]);
+      
+      return [headers, ...rows]
+        .map((row: any[]) => row.map((field: unknown) => `"${String(field)}"`).join(','))
+        .join('\n');
+    } finally {
+      client.release();
+    }
   }
 }
