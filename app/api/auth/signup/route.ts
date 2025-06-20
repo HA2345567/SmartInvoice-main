@@ -62,10 +62,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Generate token (await if async)
-    const token = await AuthService.generateToken(user.id);
+    // Generate token (not async)
+    const token = AuthService.generateToken(user.id);
 
-    // Send welcome email
+    // Send welcome email (optional, non-blocking)
     try {
       if (process.env.EMAIL_HOST && process.env.EMAIL_USER) {
         const emailService = new EmailService({
@@ -104,7 +104,7 @@ export async function POST(request: NextRequest) {
     });
 
   } catch (error) {
-    console.error('Signup error:', error);
+    console.error('Signup error:', error instanceof Error ? error.stack : error);
     return NextResponse.json(
       { error: 'An unexpected error occurred. Please try again.' },
       { status: 500 }
