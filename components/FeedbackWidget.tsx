@@ -77,24 +77,19 @@ export function FeedbackWidget() {
     setIsSubmitting(true);
 
     try {
-      // In a real app, you would send this to your backend
-      // For now, we'll simulate the submission
-      await new Promise(resolve => setTimeout(resolve, 1500));
-
-      // Log feedback to console for development
-      // console.log('Feedback submitted:', {
-      //   ...feedback,
-      //   timestamp: new Date().toISOString(),
-      //   userAgent: navigator.userAgent,
-      //   url: window.location.href
-      // });
-
+      const response = await fetch('/api/feedback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(feedback),
+      });
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to submit feedback.');
+      }
       toast({
         title: 'Thank you for your feedback! 🎉',
         description: 'Your input helps us make SmartInvoice better for everyone.',
       });
-
-      // Reset form
       setFeedback({
         type: 'general',
         rating: 0,
@@ -104,10 +99,10 @@ export function FeedbackWidget() {
         category: ''
       });
       setIsOpen(false);
-    } catch (error) {
+    } catch (error: any) {
       toast({
         title: 'Submission Failed',
-        description: 'Please try again or contact support.',
+        description: error.message || 'Please try again or contact support.',
         variant: 'destructive',
       });
     } finally {

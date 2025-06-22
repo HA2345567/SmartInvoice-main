@@ -1,4 +1,5 @@
 import { Client } from 'pg';
+import { createClient } from '@supabase/supabase-js';
 
 // Database configuration for production deployment
 export const getDatabaseConfig = () => {
@@ -47,3 +48,10 @@ async function applyMigrations() {
     await client.end();
   }
 }
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
+
+export default supabase;

@@ -747,4 +747,20 @@ export class DatabaseService {
       return '';
     }
   }
+
+  static async addFeedback(feedback: any) {
+    const db = await import('better-sqlite3');
+    const database = new db.default('./data/smartinvoice.db');
+    const stmt = database.prepare(`INSERT INTO feedback (type, rating, title, description, email, category, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?)`);
+    stmt.run(feedback.type, feedback.rating, feedback.title, feedback.description, feedback.email, feedback.category, feedback.createdAt);
+    database.close();
+  }
+
+  static async getAllFeedback() {
+    const db = await import('better-sqlite3');
+    const database = new db.default('./data/smartinvoice.db');
+    const rows = database.prepare('SELECT * FROM feedback ORDER BY createdAt DESC').all();
+    database.close();
+    return rows;
+  }
 } 

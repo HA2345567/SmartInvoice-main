@@ -1,5 +1,7 @@
 require('dotenv').config();
 const { createClient } = require('@supabase/supabase-js');
+const sqlite3 = require('sqlite3');
+const db = new sqlite3.Database(':memory:');
 
 async function checkSchema() {
   console.log('Checking database schema...');
@@ -69,5 +71,19 @@ async function checkSchema() {
     console.error('Error:', error);
   }
 }
+
+// Feedback table creation
+const createFeedbackTable = `
+CREATE TABLE IF NOT EXISTS feedback (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  type TEXT NOT NULL,
+  rating INTEGER NOT NULL,
+  title TEXT NOT NULL,
+  description TEXT NOT NULL,
+  email TEXT,
+  category TEXT,
+  createdAt TEXT NOT NULL
+);`;
+db.exec(createFeedbackTable);
 
 checkSchema().catch(console.error); 
