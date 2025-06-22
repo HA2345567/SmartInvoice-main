@@ -742,3 +742,8 @@ body {
     right: 1rem;
   }
 }
+
+.font-cookie {
+  font-family: 'Cookie', cursive !important;
+  letter-spacing: 0.01em;
+}

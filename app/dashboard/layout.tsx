@@ -194,7 +194,7 @@ export default function DashboardLayout({
             <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-br from-green-400 to-green-600 rounded-xl flex items-center justify-center dark-glow">
               <FileText className="w-4 h-4 sm:w-6 sm:h-6 text-black" />
             </div>
-            <span className="text-lg sm:text-xl font-bold text-dark-primary">SmartInvoice</span>
+            <span className="text-2xl sm:text-3xl font-bold text-dark-primary font-cookie">SmartInvoice</span>
           </Link>
           <Button
             variant="ghost"

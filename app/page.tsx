@@ -30,7 +30,7 @@ export default function LandingPage() {
             <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-green-400 to-green-600 rounded-xl flex items-center justify-center shadow-lg green-glow">
               <FileText className="w-5 h-5 sm:w-7 sm:h-7 text-black" />
             </div>
-            <span className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-green-400 to-green-600 bg-clip-text text-transparent">
+            <span className="text-3xl sm:text-4xl font-bold bg-gradient-to-r from-green-400 to-green-600 bg-clip-text text-transparent font-cookie">
               SmartInvoice
             </span>
           </div>
@@ -336,7 +336,7 @@ export default function LandingPage() {
             <div className="w-12 h-12 bg-gradient-to-br from-green-400 to-green-600 rounded-xl flex items-center justify-center shadow-lg">
               <FileText className="w-7 h-7 text-black" />
             </div>
-            <span className="text-2xl font-bold bg-gradient-to-r from-green-400 to-green-600 bg-clip-text text-transparent">
+            <span className="text-3xl font-bold bg-gradient-to-r from-green-400 to-green-600 bg-clip-text text-transparent font-cookie">
               SmartInvoice
             </span>
           </div>

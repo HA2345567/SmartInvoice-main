@@ -1291,7 +1291,7 @@ export default function CreateInvoice() {
                     <span className="text-white font-bold text-lg">SI</span>
                   </div>
                   <div>
-                    <h1 className="text-2xl font-bold text-slate-900">SmartInvoice</h1>
+                    <h1 className="text-4xl font-bold text-slate-900 font-cookie">SmartInvoice</h1>
                     <p className="text-slate-600">Professional Invoice Management</p>
                   </div>
                 </div>

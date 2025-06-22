@@ -132,7 +132,7 @@ export default function SignupPage() {
             <div className="w-12 h-12 bg-gradient-to-br from-green-400 to-green-600 rounded-xl flex items-center justify-center green-glow">
               <FileText className="w-7 h-7 text-black" />
             </div>
-            <span className="text-3xl font-bold text-green-primary">SmartInvoice</span>
+            <span className="text-4xl font-bold text-green-primary font-cookie">SmartInvoice</span>
           </Link>
         </div>
 

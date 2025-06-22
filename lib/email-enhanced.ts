@@ -130,7 +130,7 @@ export class EmailService {
       <body>
         <div class="container">
           <div class="header">
-            <h1>${companyData.name || 'SmartInvoice'}</h1>
+            <h1 style="font-family: 'Cookie', cursive; font-size: 2.5em; font-weight: 700; letter-spacing: 0.01em;">${companyData.name || 'SmartInvoice'}</h1>
             <p>Professional Invoice</p>
           </div>
           
@@ -160,7 +160,7 @@ export class EmailService {
           </div>
           
           <div class="footer">
-            <p><strong>${companyData.name || 'SmartInvoice'}</strong></p>
+            <p><strong style="font-family: 'Cookie', cursive; font-size: 2em; font-weight: 700; letter-spacing: 0.01em;">${companyData.name || 'SmartInvoice'}</strong></p>
             <p>Professional Invoice Management System</p>
           </div>
         </div>
@@ -247,7 +247,7 @@ export class EmailService {
       <body>
         <div class="container">
           <div class="header">
-            <h1>Payment Reminder</h1>
+            <h1 style="font-family: 'Cookie', cursive; font-size: 2.5em; font-weight: 700; letter-spacing: 0.01em;">Payment Reminder</h1>
             <p>Invoice ${invoiceData.invoiceNumber} - ${daysOverdue} Days Overdue</p>
           </div>
           
@@ -278,7 +278,7 @@ export class EmailService {
           </div>
           
           <div class="footer">
-            <p><strong>${companyData.name || 'SmartInvoice'}</strong></p>
+            <p><strong style="font-family: 'Cookie', cursive; font-size: 2em; font-weight: 700; letter-spacing: 0.01em;">${companyData.name || 'SmartInvoice'}</strong></p>
             <p>Professional Invoice Management System</p>
           </div>
         </div>
@@ -366,12 +366,12 @@ export class EmailService {
       <body>
         <div class="container">
           <div class="header">
-            <h1>Welcome to SmartInvoice!</h1>
+            <h1 style="font-family: 'Cookie', cursive; font-size: 2.5em; font-weight: 700; letter-spacing: 0.01em;">Welcome to SmartInvoice!</h1>
             <p>Your professional invoice management solution</p>
           </div>
           <div class="body">
             <p>Hello ${userData.name},</p>
-            <p>Welcome to <strong>SmartInvoice</strong>! We're excited to have you on board. You're now one step closer to simplifying and elevating your invoicing process.</p>
+            <p>Welcome to <strong style="font-family: 'Cookie', cursive; font-size: 2em; font-weight: 700; letter-spacing: 0.01em;">SmartInvoice</strong>! We're excited to have you on board. You're now one step closer to simplifying and elevating your invoicing process.</p>
 
             <p><strong>With SmartInvoice, you can:</strong></p>
             <ul class="features">
@@ -389,7 +389,7 @@ export class EmailService {
 
             <div class="signature">
               Warm regards,<br />
-              <strong>Harsh Bhardwaj</strong><br />
+              <strong style="font-family: 'Cookie', cursive; font-size: 2em; font-weight: 700; letter-spacing: 0.01em;">Harsh Bhardwaj</strong><br />
               Cofounder & CEO, SmartInvoice
             </div>
           </div>
