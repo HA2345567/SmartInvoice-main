@@ -161,7 +161,7 @@ export class EmailService {
       <body>
         <div class="container">
           <div class="header">
-            <h1 style="font-family: 'Cookie', cursive; font-size: 2.5em; font-weight: 700; letter-spacing: 0.01em;">${companyData.name || 'SmartInvoice'}</h1>
+            <h1 style="font-family: 'Cookie', cursive; font-size: 2.5em; letter-spacing: 0.01em;">${companyData.name || 'SmartInvoice'}</h1>
             <p>Professional Invoice</p>
           </div>
           
@@ -191,7 +191,7 @@ export class EmailService {
           </div>
           
           <div class="footer">
-            <p>Sent via <strong style="font-family: 'Cookie', cursive; font-size: 2em; font-weight: 700; letter-spacing: 0.01em;">SmartInvoice</strong></p>
+            <p>Sent via <strong style="font-family: 'Cookie', cursive; font-size: 2em; letter-spacing: 0.01em;">SmartInvoice</strong></p>
             <p>&copy; ${new Date().getFullYear()} SmartInvoice. All rights reserved.</p>
           </div>
         </div>
@@ -276,11 +276,11 @@ export class EmailService {
       <body>
         <div class="container">
           <div class="header">
-            <h1 style="font-family: 'Cookie', cursive; font-size: 2.5em; font-weight: 700; letter-spacing: 0.01em;">Welcome to SmartInvoice!</h1>
+            <h1 style="font-family: 'Cookie', cursive; font-size: 2.5em; letter-spacing: 0.01em;">Welcome to SmartInvoice!</h1>
             <p>Your professional invoice management solution</p>
           </div>
           <p>Hello ${recipientName},</p>
-          <p>Welcome to <strong style="font-family: 'Cookie', cursive; font-size: 2em; font-weight: 700; letter-spacing: 0.01em;">SmartInvoice</strong>! We're excited to have you on board. You're now one step closer to simplifying and elevating your invoicing process.</p>
+          <p>Welcome to <strong style="font-family: 'Cookie', cursive; font-size: 2em; letter-spacing: 0.01em;">SmartInvoice</strong>! We're excited to have you on board. You're now one step closer to simplifying and elevating your invoicing process.</p>
           <ul class="features">
             <li>Create beautiful, professional invoices in seconds</li>
             <li>Track payments and manage overdue invoices with ease</li>
@@ -398,7 +398,7 @@ export class EmailService {
           <p>If you have already made this payment, please disregard this message. If you have any questions or need assistance, feel free to reply to this email or contact our support team.</p>
           <div class="footer">
             Thank you for your prompt attention!<br />
-            <strong style="font-family: 'Cookie', cursive; font-size: 2em; font-weight: 700; letter-spacing: 0.01em;">SmartInvoice</strong> &mdash; Professional Invoice Management<br />
+            <strong style="font-family: 'Cookie', cursive; font-size: 2em; letter-spacing: 0.01em;">SmartInvoice</strong> &mdash; Professional Invoice Management<br />
             Need help? Contact us at support@smartinvoice.com
           </div>
         </div>
