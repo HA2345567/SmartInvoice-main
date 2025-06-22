@@ -82,12 +82,12 @@ export function FeedbackWidget() {
       await new Promise(resolve => setTimeout(resolve, 1500));
 
       // Log feedback to console for development
-      console.log('Feedback submitted:', {
-        ...feedback,
-        timestamp: new Date().toISOString(),
-        userAgent: navigator.userAgent,
-        url: window.location.href
-      });
+      // console.log('Feedback submitted:', {
+      //   ...feedback,
+      //   timestamp: new Date().toISOString(),
+      //   userAgent: navigator.userAgent,
+      //   url: window.location.href
+      // });
 
       toast({
         title: 'Thank you for your feedback! 🎉',

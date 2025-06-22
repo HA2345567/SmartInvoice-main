@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Generate token
-    const token = await AuthService.generateToken(user.id); // use await if generateToken is async
+    const token = AuthService.generateToken(user.id);
 
     return NextResponse.json({
       user,

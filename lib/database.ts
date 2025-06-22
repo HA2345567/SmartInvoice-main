@@ -1,13 +1,10 @@
-// @ts-ignore
-// If you see a 'Cannot find module \"pg\"' error, run: npm install pg
-import { Pool } from 'pg';
-import { v4 as uuidv4 } from 'uuid';
-import path from 'path';
+import { createClient } from '@supabase/supabase-js';
 
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false }
-});
+// Initialize Supabase client
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+
+export const supabase = createClient(supabaseUrl, supabaseKey);
 
 export interface Invoice {
   id: string;
@@ -30,7 +27,7 @@ export interface Invoice {
   paidDate?: string;
   paymentMethod?: string;
   paymentNotes?: string;
-  items: string; // JSON string
+  items: any[];
   notes?: string;
   terms?: string;
   taxRate: number;
@@ -65,121 +62,7 @@ export interface InvoiceItem {
   amount: number;
 }
 
-let dbPromise: Promise<any> | null = null;
-
 export class DatabaseService {
-  private static async getDb(): Promise<any> {
-    if (!dbPromise) {
-      dbPromise = this.initializeDatabase();
-    }
-    return dbPromise;
-  }
-
-  private static async initializeDatabase(): Promise<any> {
-    const dbPath = path.join(process.cwd(), 'data', 'smartinvoice.db');
-    
-    // Ensure data directory exists
-    const fs = require('fs');
-    const dataDir = path.dirname(dbPath);
-    if (!fs.existsSync(dataDir)) {
-      fs.mkdirSync(dataDir, { recursive: true });
-    }
-
-    const client = await pool.connect();
-    try {
-      await this.initializeTables(client);
-      return client;
-    } finally {
-      client.release();
-    }
-  }
-
-  private static async initializeTables(client: any): Promise<void> {
-    // Create users table
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS users (
-        id TEXT PRIMARY KEY,
-        email TEXT UNIQUE NOT NULL,
-        password TEXT NOT NULL,
-        name TEXT NOT NULL,
-        company TEXT,
-        avatar TEXT,
-        createdAt TEXT NOT NULL,
-        updatedAt TEXT NOT NULL
-      )
-    `);
-
-    // Create clients table
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS clients (
-        id TEXT PRIMARY KEY,
-        userId TEXT NOT NULL,
-        name TEXT NOT NULL,
-        email TEXT NOT NULL,
-        company TEXT,
-        address TEXT NOT NULL,
-        gstNumber TEXT,
-        currency TEXT NOT NULL DEFAULT 'USD',
-        isActive BOOLEAN NOT NULL DEFAULT 1,
-        createdAt TEXT NOT NULL,
-        updatedAt TEXT NOT NULL,
-        FOREIGN KEY (userId) REFERENCES users (id) ON DELETE CASCADE,
-        UNIQUE(userId, email)
-      )
-    `);
-
-    // Create invoices table
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS invoices (
-        id TEXT PRIMARY KEY,
-        userId TEXT NOT NULL,
-        invoiceNumber TEXT NOT NULL,
-        clientId TEXT NOT NULL,
-        clientName TEXT NOT NULL,
-        clientEmail TEXT NOT NULL,
-        clientCompany TEXT,
-        clientAddress TEXT NOT NULL,
-        clientGST TEXT,
-        clientCurrency TEXT NOT NULL DEFAULT '$',
-        amount REAL NOT NULL,
-        subtotal REAL NOT NULL,
-        taxAmount REAL NOT NULL DEFAULT 0,
-        discountAmount REAL NOT NULL DEFAULT 0,
-        status TEXT NOT NULL DEFAULT 'draft',
-        date TEXT NOT NULL,
-        dueDate TEXT NOT NULL,
-        paidDate TEXT,
-        paymentMethod TEXT,
-        paymentNotes TEXT,
-        items TEXT NOT NULL,
-        notes TEXT,
-        terms TEXT,
-        taxRate REAL NOT NULL DEFAULT 0,
-        discountRate REAL NOT NULL DEFAULT 0,
-        paymentLink TEXT,
-        emailSent BOOLEAN NOT NULL DEFAULT 0,
-        remindersSent INTEGER NOT NULL DEFAULT 0,
-        lastReminderSent TEXT,
-        createdAt TEXT NOT NULL,
-        updatedAt TEXT NOT NULL,
-        FOREIGN KEY (userId) REFERENCES users (id) ON DELETE CASCADE,
-        FOREIGN KEY (clientId) REFERENCES clients (id) ON DELETE CASCADE,
-        UNIQUE(userId, invoiceNumber)
-      )
-    `);
-
-    // Create indexes for better performance
-    await client.query(`
-      CREATE INDEX IF NOT EXISTS idx_invoices_userId ON invoices(userId);
-      CREATE INDEX IF NOT EXISTS idx_invoices_status ON invoices(status);
-      CREATE INDEX IF NOT EXISTS idx_invoices_dueDate ON invoices(dueDate);
-      CREATE INDEX IF NOT EXISTS idx_clients_userId ON clients(userId);
-      CREATE INDEX IF NOT EXISTS idx_clients_email ON clients(email);
-    `);
-
-    console.log('Database tables initialized successfully');
-  }
-
   // User operations
   static async createUser(userData: {
     email: string;
@@ -187,404 +70,681 @@ export class DatabaseService {
     name: string;
     company?: string;
   }): Promise<{ user: any; exists: boolean }> {
-    const client = await pool.connect();
     try {
       // Check if user exists
-      const res = await client.query('SELECT * FROM users WHERE email = $1', [userData.email.toLowerCase()]);
-      if (res.rows.length > 0) {
-        const { password, ...userWithoutPassword } = res.rows[0];
+      const { data: existingUser } = await supabase
+        .from('users')
+        .select('*')
+        .eq('email', userData.email.toLowerCase())
+        .single();
+
+      if (existingUser) {
+        const { password, ...userWithoutPassword } = existingUser;
         return { user: userWithoutPassword, exists: true };
       }
 
       const user = {
-        id: uuidv4(),
+        id: crypto.randomUUID(),
         email: userData.email.toLowerCase(),
         password: userData.password,
         name: userData.name,
         company: userData.company,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
+        createdat: new Date().toISOString(),
+        updatedat: new Date().toISOString(),
       };
 
-      await client.query(
-        `INSERT INTO users (id, email, password, name, company, createdAt, updatedAt)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-        [user.id, user.email, user.password, user.name, user.company, user.createdAt, user.updatedAt]
-      );
+      const { data, error } = await supabase
+        .from('users')
+        .insert([user])
+        .select()
+        .single();
 
-      const { password, ...userWithoutPassword } = user;
+      if (error) throw error;
+
+      const { password, ...userWithoutPassword } = data;
       return { user: userWithoutPassword, exists: false };
-    } finally {
-      client.release();
+    } catch (error) {
+      console.error('Error creating user:', error);
+      throw error;
     }
   }
 
   static async getUserByEmail(email: string): Promise<any | null> {
-    const client = await pool.connect();
-    try {
-      const res = await client.query('SELECT * FROM users WHERE email = $1', [email.toLowerCase()]);
-      return res.rows[0] || null;
-    } finally {
-      client.release();
-    }
+    const { data, error } = await supabase
+      .from('users')
+      .select('*')
+      .eq('email', email.toLowerCase())
+      .single();
+    
+    if (error) return null;
+    return data;
   }
 
   static async getUserById(id: string): Promise<any | null> {
-    const client = await pool.connect();
-    try {
-      const res = await client.query('SELECT * FROM users WHERE id = $1', [id]);
-      if (res.rows[0]) {
-        const { password, ...userWithoutPassword } = res.rows[0];
-        return userWithoutPassword;
-      }
+    console.log('Looking for user with ID:', id);
+    
+    const { data, error } = await supabase
+      .from('users')
+      .select('id, email, name, company, avatar, createdat, updatedat, company_address, company_gst, company_phone, company_website')
+      .eq('id', id)
+      .single();
+    
+    if (error) {
+      console.error('Database error when getting user by ID:', error);
       return null;
-    } finally {
-      client.release();
     }
+    
+    if (!data) {
+      console.log('No user found with ID:', id);
+      return null;
+    }
+    
+    console.log('User found:', data.email);
+    
+    // Transform to camelCase for consistency
+    return {
+      id: data.id,
+      email: data.email,
+      name: data.name,
+      company: data.company,
+      companyAddress: data.company_address,
+      companyGST: data.company_gst,
+      companyPhone: data.company_phone,
+      companyWebsite: data.company_website,
+      avatar: data.avatar,
+      createdAt: data.createdat,
+      updatedAt: data.updatedat,
+    };
   }
 
-  // Client operations
   static async createClient(userId: string, clientData: Omit<Client, 'id' | 'userId' | 'isActive' | 'createdAt' | 'updatedAt'>): Promise<Client> {
-    const client = {
-      id: uuidv4(),
-      userId,
-      ...clientData,
-      isActive: true,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    const db = await pool.connect();
     try {
-      await db.query(
-        `INSERT INTO clients (id, userId, name, email, company, address, gstNumber, currency, isActive, createdAt, updatedAt)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
-        [client.id, client.userId, client.name, client.email, client.company, client.address, client.gstNumber, client.currency, client.isActive, client.createdAt, client.updatedAt]
-      );
-      return client;
-    } finally {
-      db.release();
+      const client = {
+        id: crypto.randomUUID(),
+        userid: userId,
+        name: clientData.name,
+        email: clientData.email.toLowerCase(),
+        company: clientData.company,
+        address: clientData.address,
+        gstnumber: clientData.gstNumber,
+        currency: clientData.currency || 'USD',
+        isactive: true,
+        createdat: new Date().toISOString(),
+        updatedat: new Date().toISOString(),
+      };
+
+      const { data, error } = await supabase
+        .from('clients')
+        .insert([client])
+        .select()
+        .single();
+
+      if (error) throw error;
+      
+      // Transform back to camelCase for consistency
+      return {
+        id: data.id,
+        userId: data.userid,
+        name: data.name,
+        email: data.email,
+        company: data.company,
+        address: data.address,
+        gstNumber: data.gstnumber,
+        currency: data.currency,
+        isActive: data.isactive,
+        createdAt: data.createdat,
+        updatedAt: data.updatedat,
+      };
+    } catch (error) {
+      console.error('Error creating client:', error);
+      throw error;
     }
   }
 
   static async getClients(userId: string): Promise<any[]> {
-    const db = await pool.connect();
     try {
-      const res = await db.query('SELECT * FROM clients WHERE userId = $1', [userId]);
-      return res.rows;
-    } finally {
-      db.release();
+      const { data, error } = await supabase
+        .from('clients')
+        .select('*')
+        .eq('userid', userId)
+        .order('createdat', { ascending: false });
+      
+      if (error) throw error;
+      
+      // Transform to camelCase
+      return (data || []).map(client => ({
+        id: client.id,
+        userId: client.userid,
+        name: client.name,
+        email: client.email,
+        company: client.company,
+        address: client.address,
+        gstNumber: client.gstnumber,
+        currency: client.currency,
+        isActive: client.isactive,
+        createdAt: client.createdat,
+        updatedAt: client.updatedat,
+      }));
+    } catch (error) {
+      console.error('Error getting clients:', error);
+      return [];
     }
   }
 
   static async getClientById(userId: string, id: string): Promise<Client | null> {
-    const client = await pool.connect();
     try {
-      const res = await client.query('SELECT * FROM clients WHERE id = $1 AND userId = $2', [id, userId]);
-      return res.rows[0] || null;
-    } finally {
-      client.release();
+      const { data, error } = await supabase
+        .from('clients')
+        .select('*')
+        .eq('userid', userId)
+        .eq('id', id)
+        .single();
+      
+      if (error) return null;
+      
+      // Transform to camelCase
+      return {
+        id: data.id,
+        userId: data.userid,
+        name: data.name,
+        email: data.email,
+        company: data.company,
+        address: data.address,
+        gstNumber: data.gstnumber,
+        currency: data.currency,
+        isActive: data.isactive,
+        createdAt: data.createdat,
+        updatedAt: data.updatedat,
+      };
+    } catch (error) {
+      console.error('Error getting client by id:', error);
+      return null;
     }
   }
 
-  static async updateClient(userId: string, id: string, updates: Partial<Client>): Promise<Client | null> {
-    const client = await pool.connect();
+  static async updateClient(userId: string, id: string, updates: any): Promise<Client | null> {
     try {
-      const setClause = Object.keys(updates).map(key => `${key} = $${Object.keys(updates).indexOf(key) + 1}`).join(', ');
-      const values = [...Object.values(updates), new Date().toISOString(), id, userId];
-      
-      await client.query(
-        `UPDATE clients SET ${setClause}, updatedAt = $${values.length - 2} WHERE id = $${values.length - 1} AND userId = $${values.length}`,
-        values
-      );
+      // Transform camelCase to database column names
+      const dbUpdates: any = {};
+      if (updates.name) dbUpdates.name = updates.name;
+      if (updates.email) dbUpdates.email = updates.email.toLowerCase();
+      if (updates.company) dbUpdates.company = updates.company;
+      if (updates.address) dbUpdates.address = updates.address;
+      if (updates.gstNumber) dbUpdates.gstnumber = updates.gstNumber;
+      if (updates.currency) dbUpdates.currency = updates.currency;
+      if (updates.isActive !== undefined) dbUpdates.isactive = updates.isActive;
+      dbUpdates.updatedat = new Date().toISOString();
 
-      return await this.getClientById(userId, id);
-    } finally {
-      client.release();
+      const { data, error } = await supabase
+        .from('clients')
+        .update(dbUpdates)
+        .eq('userid', userId)
+        .eq('id', id)
+        .select()
+        .single();
+      
+      if (error) throw error;
+      
+      // Transform back to camelCase
+      return {
+        id: data.id,
+        userId: data.userid,
+        name: data.name,
+        email: data.email,
+        company: data.company,
+        address: data.address,
+        gstNumber: data.gstnumber,
+        currency: data.currency,
+        isActive: data.isactive,
+        createdAt: data.createdat,
+        updatedAt: data.updatedat,
+      };
+    } catch (error) {
+      console.error('Error updating client:', error);
+      return null;
     }
   }
 
   static async deleteClient(userId: string, id: string): Promise<boolean> {
-    const client = await pool.connect();
     try {
-      const res = await client.query('DELETE FROM clients WHERE id = $1 AND userId = $2', [id, userId]);
-      return res.rowCount > 0;
-    } finally {
-      client.release();
+      const { error } = await supabase
+        .from('clients')
+        .delete()
+        .eq('userid', userId)
+        .eq('id', id);
+      
+      return !error;
+    } catch (error) {
+      console.error('Error deleting client:', error);
+      return false;
     }
   }
 
   static async clientHasInvoices(userId: string, clientId: string): Promise<boolean> {
-    const client = await pool.connect();
     try {
-      const res = await client.query('SELECT COUNT(*) as count FROM invoices WHERE clientId = $1 AND userId = $2', [clientId, userId]);
-      return res.rows[0].count > 0;
-    } finally {
-      client.release();
+      const { data, error } = await supabase
+        .from('invoices')
+        .select('id')
+        .eq('userid', userId)
+        .eq('clientid', clientId)
+        .limit(1);
+      
+      if (error) throw error;
+      return data && data.length > 0;
+    } catch (error) {
+      console.error('Error checking client invoices:', error);
+      return false;
     }
   }
 
-  // Invoice operations
   static async createInvoice(userId: string, invoiceData: any): Promise<any> {
-    const invoice = {
-      id: uuidv4(),
-      userId,
-      ...invoiceData,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    const db = await pool.connect();
     try {
-      await db.query(
-        `INSERT INTO invoices (id, userId, invoiceNumber, clientId, clientName, clientEmail, clientCompany, clientAddress, clientGST, clientCurrency, amount, subtotal, taxAmount, discountAmount, status, date, dueDate, paidDate, paymentMethod, paymentNotes, items, notes, terms, taxRate, discountRate, paymentLink, emailSent, remindersSent, lastReminderSent, createdAt, updatedAt)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30)`,
-        [invoice.id, invoice.userId, invoice.invoiceNumber, invoice.clientId, invoice.clientName, invoice.clientEmail, invoice.clientCompany, invoice.clientAddress, invoice.clientGST, invoice.clientCurrency, invoice.amount, invoice.subtotal, invoice.taxAmount, invoice.discountAmount, invoice.status, invoice.date, invoice.dueDate, invoice.paidDate, invoice.paymentMethod, invoice.paymentNotes, invoice.items, invoice.notes, invoice.terms, invoice.taxRate, invoice.discountRate, invoice.paymentLink, invoice.emailSent, invoice.remindersSent, invoice.lastReminderSent, invoice.createdAt, invoice.updatedAt]
-      );
-      return invoice;
-    } finally {
-      db.release();
+      const clientId = await this.getOrCreateClientId(userId, invoiceData.clientEmail, {
+        name: invoiceData.clientName,
+        address: invoiceData.clientAddress,
+        company: invoiceData.clientCompany,
+        gstNumber: invoiceData.clientGST,
+        currency: invoiceData.clientCurrency
+      });
+
+      const newInvoice = {
+        id: crypto.randomUUID(),
+        userid: userId,
+        invoicenumber: invoiceData.invoiceNumber,
+        clientid: clientId,
+        clientname: invoiceData.clientName,
+        clientemail: invoiceData.clientEmail.toLowerCase(),
+        clientcompany: invoiceData.clientCompany,
+        clientaddress: invoiceData.clientAddress,
+        clientgst: invoiceData.clientGST,
+        clientcurrency: invoiceData.clientCurrency,
+        amount: invoiceData.amount,
+        subtotal: invoiceData.subtotal,
+        taxamount: invoiceData.taxAmount,
+        discountamount: invoiceData.discountAmount,
+        status: 'draft',
+        date: invoiceData.date,
+        duedate: invoiceData.dueDate,
+        items: invoiceData.items,
+        notes: invoiceData.notes,
+        terms: invoiceData.terms,
+        taxrate: invoiceData.taxRate,
+        discountrate: invoiceData.discountRate,
+        emailsent: false,
+        reminderssent: 0,
+        createdat: new Date().toISOString(),
+        updatedat: new Date().toISOString(),
+      };
+
+      const { data, error } = await supabase
+        .from('invoices')
+        .insert([newInvoice])
+        .select()
+        .single();
+
+      if (error) throw error;
+      
+      // Transform back to camelCase
+      return this.transformInvoiceToCamelCase(data);
+    } catch (error) {
+      console.error('Error creating invoice:', error);
+      throw error;
     }
+  }
+
+  private static async getOrCreateClientId(userId: string, email: string, clientData?: any): Promise<string> {
+    try {
+      const { data: client } = await supabase
+        .from('clients')
+        .select('id')
+        .eq('userid', userId)
+        .eq('email', email.toLowerCase())
+        .single();
+
+      if (client) {
+        return client.id;
+      }
+
+      const newClient = await this.createClient(userId, {
+        email,
+        name: clientData?.name || 'N/A',
+        address: clientData?.address || 'N/A',
+        company: clientData?.company,
+        gstNumber: clientData?.gstNumber,
+        currency: clientData?.currency || 'USD'
+      });
+      return newClient.id;
+    } catch (error) {
+      console.error('Error getting or creating client id:', error);
+      throw error;
+    }
+  }
+
+  private static transformInvoiceToCamelCase(data: any): any {
+    return {
+      id: data.id,
+      userId: data.userid,
+      invoiceNumber: data.invoicenumber,
+      clientId: data.clientid,
+      clientName: data.clientname,
+      clientEmail: data.clientemail,
+      clientCompany: data.clientcompany,
+      clientAddress: data.clientaddress,
+      clientGST: data.clientgst,
+      clientCurrency: data.clientcurrency,
+      amount: data.amount,
+      subtotal: data.subtotal,
+      taxAmount: data.taxamount,
+      discountAmount: data.discountamount,
+      status: data.status,
+      date: data.date,
+      dueDate: data.duedate,
+      paidDate: data.paiddate,
+      paymentMethod: data.paymentmethod,
+      paymentNotes: data.paymentnotes,
+      items: data.items,
+      notes: data.notes,
+      terms: data.terms,
+      taxRate: data.taxrate,
+      discountRate: data.discountrate,
+      paymentLink: data.paymentlink,
+      emailSent: data.emailsent,
+      remindersSent: data.reminderssent,
+      lastReminderSent: data.lastremindersent,
+      createdAt: data.createdat,
+      updatedAt: data.updatedat,
+    };
   }
 
   static async getInvoices(userId: string): Promise<any[]> {
-    const db = await pool.connect();
     try {
-      const res = await db.query('SELECT * FROM invoices WHERE userId = $1', [userId]);
-      return res.rows;
-    } finally {
-      db.release();
+      const { data, error } = await supabase
+        .from('invoices')
+        .select('*')
+        .eq('userid', userId)
+        .order('createdat', { ascending: false });
+      
+      if (error) throw error;
+      
+      // Transform to camelCase
+      return (data || []).map(invoice => this.transformInvoiceToCamelCase(invoice));
+    } catch (error) {
+      console.error('Error getting invoices:', error);
+      return [];
     }
   }
 
   static async getInvoiceById(userId: string, id: string): Promise<any | null> {
-    const client = await pool.connect();
     try {
-      const res = await client.query('SELECT * FROM invoices WHERE id = $1 AND userId = $2', [id, userId]);
-      if (!res.rows[0]) return null;
+      const { data, error } = await supabase
+        .from('invoices')
+        .select('*')
+        .eq('userid', userId)
+        .eq('id', id)
+        .single();
+      
+      if (error) return null;
+      
+      return this.transformInvoiceToCamelCase(data);
+    } catch (error) {
+      console.error('Error getting invoice by id:', error);
+      return null;
+    }
+  }
 
-      const parsedInvoice = {
-        ...res.rows[0],
-        items: JSON.parse(res.rows[0].items),
-        emailSent: Boolean(res.rows[0].emailSent)
-      };
-
-      // Auto-update overdue status
-      if (parsedInvoice.status === 'sent') {
-        const dueDate = new Date(parsedInvoice.dueDate);
-        const today = new Date();
-        if (dueDate < today) {
-          parsedInvoice.status = 'overdue';
-          await this.updateInvoice(userId, id, { status: 'overdue' });
-        }
-      }
-
-      return parsedInvoice;
-    } finally {
-      client.release();
+  static async getPublicInvoiceById(id: string): Promise<any | null> {
+    try {
+      const { data, error } = await supabase
+        .from('invoices')
+        .select('*')
+        .eq('id', id)
+        .single();
+      
+      if (error) return null;
+      
+      return this.transformInvoiceToCamelCase(data);
+    } catch (error) {
+      console.error('Error getting public invoice by id:', error);
+      return null;
     }
   }
 
   static async updateInvoice(userId: string, id: string, updates: any): Promise<any | null> {
-    const client = await pool.connect();
     try {
-      const updateData = { ...updates, updatedAt: new Date().toISOString() };
-      
-      // Handle items serialization
-      if (updateData.items) {
-        updateData.items = JSON.stringify(updateData.items);
-      }
+      // Transform camelCase to database column names
+      const dbUpdates: any = {};
+      if (updates.invoiceNumber) dbUpdates.invoicenumber = updates.invoiceNumber;
+      if (updates.clientName) dbUpdates.clientname = updates.clientName;
+      if (updates.clientEmail) dbUpdates.clientemail = updates.clientEmail.toLowerCase();
+      if (updates.clientCompany) dbUpdates.clientcompany = updates.clientCompany;
+      if (updates.clientAddress) dbUpdates.clientaddress = updates.clientAddress;
+      if (updates.clientGST) dbUpdates.clientgst = updates.clientGST;
+      if (updates.clientCurrency) dbUpdates.clientcurrency = updates.clientCurrency;
+      if (updates.amount !== undefined) dbUpdates.amount = updates.amount;
+      if (updates.subtotal !== undefined) dbUpdates.subtotal = updates.subtotal;
+      if (updates.taxAmount !== undefined) dbUpdates.taxamount = updates.taxAmount;
+      if (updates.discountAmount !== undefined) dbUpdates.discountamount = updates.discountAmount;
+      if (updates.status) dbUpdates.status = updates.status;
+      if (updates.date) dbUpdates.date = updates.date;
+      if (updates.dueDate) dbUpdates.duedate = updates.dueDate;
+      if (updates.paidDate) dbUpdates.paiddate = updates.paidDate;
+      if (updates.paymentMethod) dbUpdates.paymentmethod = updates.paymentMethod;
+      if (updates.paymentNotes) dbUpdates.paymentnotes = updates.paymentNotes;
+      if (updates.items) dbUpdates.items = updates.items;
+      if (updates.notes) dbUpdates.notes = updates.notes;
+      if (updates.terms) dbUpdates.terms = updates.terms;
+      if (updates.taxRate !== undefined) dbUpdates.taxrate = updates.taxRate;
+      if (updates.discountRate !== undefined) dbUpdates.discountrate = updates.discountRate;
+      if (updates.paymentLink) dbUpdates.paymentlink = updates.paymentLink;
+      if (updates.emailSent !== undefined) dbUpdates.emailsent = updates.emailSent;
+      if (updates.remindersSent !== undefined) dbUpdates.reminders_sent = updates.remindersSent;
+      if (updates.lastReminderSent) dbUpdates.last_reminder_sent = updates.lastReminderSent;
+      dbUpdates.updatedat = new Date().toISOString();
 
-      const setClause = Object.keys(updateData).map(key => `${key} = $${Object.keys(updateData).indexOf(key) + 1}`).join(', ');
-      const values = [...Object.values(updateData), id, userId];
+      const { data, error } = await supabase
+        .from('invoices')
+        .update(dbUpdates)
+        .eq('userid', userId)
+        .eq('id', id)
+        .select()
+        .single();
       
-      await client.query(
-        `UPDATE invoices SET ${setClause} WHERE id = $${values.length - 2} AND userId = $${values.length - 1}`,
-        values
-      );
-
-      return await this.getInvoiceById(userId, id);
-    } finally {
-      client.release();
+      if (error) throw error;
+      
+      return this.transformInvoiceToCamelCase(data);
+    } catch (error) {
+      console.error('Error updating invoice:', error);
+      return null;
     }
   }
 
   static async deleteInvoice(userId: string, id: string): Promise<boolean> {
-    const client = await pool.connect();
     try {
-      const res = await client.query('DELETE FROM invoices WHERE id = $1 AND userId = $2', [id, userId]);
-      return res.rowCount > 0;
-    } finally {
-      client.release();
-    }
-  }
-
-  // Helper methods
-  private static async getOrCreateClientId(userId: string, email: string, clientData?: any): Promise<string> {
-    const client = await pool.connect();
-    try {
-      const res = await client.query('SELECT id FROM clients WHERE email = $1 AND userId = $2', [email, userId]);
-      if (res.rows.length > 0) {
-        return res.rows[0].id;
-      }
-
-      if (clientData) {
-        const client = await this.createClient(userId, clientData);
-        return client.id;
-      }
-
-      return uuidv4();
-    } finally {
-      client.release();
+      const { error } = await supabase
+        .from('invoices')
+        .delete()
+        .eq('userid', userId)
+        .eq('id', id);
+      
+      return !error;
+    } catch (error) {
+      console.error('Error deleting invoice:', error);
+      return false;
     }
   }
 
   static generateInvoiceNumber(userId: string): string {
-    const year = new Date().getFullYear();
-    const month = String(new Date().getMonth() + 1).padStart(2, '0');
-    const random = Math.floor(Math.random() * 9999).toString().padStart(4, '0');
-    return `INV-${year}${month}-${random}`;
+    const prefix = 'INV-';
+    const timestamp = Date.now().toString().slice(-6);
+    const random = Math.random().toString(36).substr(2, 4).toUpperCase();
+    return `${prefix}${timestamp}-${random}`;
   }
 
-  // Analytics
   static async getAnalytics(userId: string): Promise<any> {
-    const db = await pool.connect();
     try {
-      const invoicesRes = await db.query('SELECT * FROM invoices WHERE userId = $1', [userId]);
-      const clientsRes = await db.query('SELECT * FROM clients WHERE userId = $1', [userId]);
-      const invoices = invoicesRes.rows;
-      const clients = clientsRes.rows;
+      const { data: allInvoices, error } = await supabase
+        .from('invoices')
+        .select('*')
+        .eq('userid', userId);
+      
+      if (error) throw error;
+      
+      const invoices = (allInvoices || []).map(invoice => this.transformInvoiceToCamelCase(invoice));
+      const totalRevenue = invoices
+        .filter((inv: any) => inv.status === 'paid')
+        .reduce((sum: number, inv: any) => sum + inv.amount, 0);
+      
+      const totalInvoices = invoices.length;
+      const paidInvoices = invoices.filter((inv: any) => inv.status === 'paid').length;
+      const pendingInvoices = invoices.filter((inv: any) => inv.status === 'sent' || inv.status === 'overdue').length;
+      const averageInvoiceValue = totalInvoices > 0 && paidInvoices > 0 ? totalRevenue / paidInvoices : 0;
+      
+      const monthlyData = this.calculateMonthlyData(invoices);
+      const topClients = this.calculateTopClients(invoices);
+      const invoiceStatusDistribution = {
+        paid: paidInvoices,
+        pending: pendingInvoices,
+        draft: invoices.filter((inv: any) => inv.status === 'draft').length,
+        overdue: invoices.filter((inv: any) => inv.status === 'overdue').length,
+      };
 
-      const totalRevenue = invoices.filter((inv: any) => inv.status === 'paid').reduce((sum: number, inv: any) => sum + Number(inv.amount), 0);
-      const paidAmount = totalRevenue;
-      const unpaidAmount = invoices.filter((inv: any) => inv.status === 'sent').reduce((sum: number, inv: any) => sum + Number(inv.amount), 0);
-      const overdueAmount = invoices.filter((inv: any) => inv.status === 'overdue').reduce((sum: number, inv: any) => sum + Number(inv.amount), 0);
-      const currentMonth = new Date().getMonth();
-      const currentYear = new Date().getFullYear();
-      const monthlyRevenue = invoices.filter((inv: any) => {
-        const invoiceDate = new Date(inv.date);
-        return inv.status === 'paid' && invoiceDate.getMonth() === currentMonth && invoiceDate.getFullYear() === currentYear;
-      }).reduce((sum: number, inv: any) => sum + Number(inv.amount), 0);
-      // Generate monthly data for the last 6 months
-      const monthlyData = [];
-      for (let i = 5; i >= 0; i--) {
-        const date = new Date();
-        date.setMonth(date.getMonth() - i);
-        const month = date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
-        const monthInvoices = invoices.filter((inv: any) => {
-          const invoiceDate = new Date(inv.date);
-          return invoiceDate.getMonth() === date.getMonth() && invoiceDate.getFullYear() === date.getFullYear() && inv.status === 'paid';
-        });
-        monthlyData.push({
-          month,
-          revenue: monthInvoices.reduce((sum: number, inv: any) => sum + Number(inv.amount), 0),
-          invoices: monthInvoices.length,
-        });
-      }
-      const paidInvoices = invoices.filter((i: any) => i.status === 'paid').length;
-      const unpaidInvoices = invoices.filter((i: any) => i.status === 'sent').length;
-      const overdueInvoices = invoices.filter((i: any) => i.status === 'overdue').length;
-      const draftInvoices = invoices.filter((i: any) => i.status === 'draft').length;
       return {
         totalRevenue,
-        paidAmount,
-        unpaidAmount,
-        overdueAmount,
-        monthlyRevenue,
-        totalInvoices: invoices.length,
+        totalInvoices,
         paidInvoices,
-        unpaidInvoices,
-        overdueInvoices,
-        draftInvoices,
-        averageInvoiceValue: paidInvoices > 0 ? totalRevenue / paidInvoices : 0,
-        topClients: clients.sort((a: any, b: any) => (b.totalAmount || 0) - (a.totalAmount || 0)).slice(0, 5),
+        pendingInvoices,
+        averageInvoiceValue,
         monthlyData,
+        topClients,
+        invoiceStatusDistribution,
       };
-    } finally {
-      db.release();
+    } catch (error) {
+      console.error('Error getting analytics:', error);
+      return {
+        totalRevenue: 0,
+        totalInvoices: 0,
+        paidInvoices: 0,
+        pendingInvoices: 0,
+        averageInvoiceValue: 0,
+        monthlyData: [],
+        topClients: [],
+        invoiceStatusDistribution: { paid: 0, pending: 0, draft: 0, overdue: 0 },
+      };
     }
   }
 
-  // Export functions
-  static async exportInvoicesCSV(userId: string): Promise<string> {
-    const client = await pool.connect();
-    try {
-      const res = await client.query(`
-        SELECT * FROM invoices 
-        WHERE userId = $1 
-        ORDER BY createdAt DESC
-      `, [userId]);
+  static calculateMonthlyData(invoices: any[]): Array<{ month: string; revenue: number; invoices: number }> {
+    const monthly: { [key: string]: { revenue: number; invoices: number } } = {};
+    invoices.filter((i: any) => i.status === 'paid' && i.paidDate).forEach((invoice: any) => {
+      const month = new Date(invoice.paidDate).toLocaleString('default', { month: 'short', year: '2-digit' });
+      if (!monthly[month]) {
+        monthly[month] = { revenue: 0, invoices: 0 };
+      }
+      monthly[month].revenue += invoice.amount;
+      monthly[month].invoices += 1;
+    });
+    return Object.entries(monthly).map(([month, data]) => ({ month, ...data }));
+  }
 
-      const headers = [
-        'Invoice Number', 'Client Name', 'Client Email', 'Client Company',
-        'Amount', 'Currency', 'Status', 'Invoice Date', 'Due Date', 'Paid Date',
-        'Payment Method', 'Tax Rate (%)', 'Discount Rate (%)', 'Subtotal',
-        'Tax Amount', 'Discount Amount', 'Notes', 'Terms', 'Created Date', 'Updated Date'
-      ];
+  static calculateTopClients(invoices: any[]): Array<{ id: string; name: string; company?: string; totalAmount: number; totalInvoices: number }> {
+    const clientMap: { [key: string]: { id: string, name: string; company?: string; totalAmount: number; totalInvoices: number } } = {};
+    invoices.filter((i: any) => i.status === 'paid').forEach((invoice: any) => {
+      if (!clientMap[invoice.clientId]) {
+        clientMap[invoice.clientId] = {
+          id: invoice.clientId,
+          name: invoice.clientName,
+          company: invoice.clientCompany,
+          totalAmount: 0,
+          totalInvoices: 0
+        };
+      }
+      clientMap[invoice.clientId].totalAmount += invoice.amount;
+      clientMap[invoice.clientId].totalInvoices += 1;
+    });
+
+    return Object.values(clientMap)
+      .sort((a, b) => b.totalAmount - a.totalAmount)
+      .slice(0, 5);
+  }
+
+  static async exportInvoicesCSV(userId: string): Promise<string> {
+    try {
+      const { data: invoices, error } = await supabase
+        .from('invoices')
+        .select('*')
+        .eq('userid', userId)
+        .order('createdat', { ascending: false });
       
-      const rows = res.rows.map((invoice: any) => [
-        invoice.invoiceNumber || '',
-        invoice.clientName || '',
-        invoice.clientEmail || '',
-        invoice.clientCompany || '',
-        (invoice.amount || 0).toFixed(2),
-        invoice.clientCurrency || '$',
-        invoice.status || '',
-        invoice.date || '',
-        invoice.dueDate || '',
-        invoice.paidDate || '',
-        invoice.paymentMethod || '',
-        (invoice.taxRate || 0).toString(),
-        (invoice.discountRate || 0).toString(),
-        (invoice.subtotal || 0).toFixed(2),
-        (invoice.taxAmount || 0).toFixed(2),
-        (invoice.discountAmount || 0).toFixed(2),
-        (invoice.notes || '').replace(/"/g, '""'),
-        (invoice.terms || '').replace(/"/g, '""'),
-        invoice.createdAt ? new Date(invoice.createdAt).toLocaleDateString() : '',
-        invoice.updatedAt ? new Date(invoice.updatedAt).toLocaleDateString() : ''
-      ]);
+      if (error) throw error;
       
-      return [headers, ...rows]
-        .map((row: any[]) => row.map((field: unknown) => `"${String(field)}"`).join(','))
-        .join('\n');
-    } finally {
-      client.release();
+      if (!invoices || invoices.length === 0) {
+        return '';
+      }
+
+      // Transform to camelCase for CSV export
+      const transformedInvoices = invoices.map(invoice => this.transformInvoiceToCamelCase(invoice));
+      const headers = Object.keys(transformedInvoices[0]).join(',');
+      const rows = transformedInvoices.map((invoice: any) =>
+        Object.values(invoice).map(value => {
+          const strValue = String(value);
+          if (strValue.includes(',')) {
+            return `"${strValue}"`;
+          }
+          return strValue;
+        }).join(',')
+      ).join('\n');
+
+      return `${headers}\n${rows}`;
+    } catch (error) {
+      console.error('Error exporting invoices CSV:', error);
+      return '';
     }
   }
 
   static async exportClientsCSV(userId: string): Promise<string> {
-    const client = await pool.connect();
     try {
-      const res = await client.query(`
-        SELECT * FROM clients 
-        WHERE userId = $1
-      `, [userId]);
+      const { data: clients, error } = await supabase
+        .from('clients')
+        .select('*')
+        .eq('userid', userId)
+        .order('createdat', { ascending: false });
+      
+      if (error) throw error;
+      
+      if (!clients || clients.length === 0) {
+        return '';
+      }
 
-      const headers = [
-        'Name', 'Email', 'Company', 'Address', 'GST/VAT Number', 'Currency',
-        'Total Invoices', 'Total Amount', 'Last Invoice Date', 'Status',
-        'Created Date', 'Updated Date'
-      ];
-      
-      const rows = res.rows.map((client: any) => [
-        client.name || '',
-        client.email || '',
-        client.company || '',
-        (client.address || '').replace(/\n/g, ' ').replace(/"/g, '""'),
-        client.gstNumber || '',
-        client.currency || '',
-        (client.totalInvoices || 0).toString(),
-        (client.totalAmount || 0).toFixed(2),
-        client.lastInvoiceDate || '',
-        client.isActive ? 'Active' : 'Inactive',
-        client.createdAt ? new Date(client.createdAt).toLocaleDateString() : '',
-        client.updatedAt ? new Date(client.updatedAt).toLocaleDateString() : ''
-      ]);
-      
-      return [headers, ...rows]
-        .map((row: any[]) => row.map((field: unknown) => `"${String(field)}"`).join(','))
-        .join('\n');
-    } finally {
-      client.release();
+      // Transform to camelCase for CSV export
+      const transformedClients = clients.map(client => ({
+        id: client.id,
+        userId: client.userid,
+        name: client.name,
+        email: client.email,
+        company: client.company,
+        address: client.address,
+        gstNumber: client.gstnumber,
+        currency: client.currency,
+        isActive: client.isactive,
+        createdAt: client.createdat,
+        updatedAt: client.updatedat,
+      }));
+
+      const headers = Object.keys(transformedClients[0]).join(',');
+      const rows = transformedClients.map((client: any) =>
+        Object.values(client).map(value => {
+          const strValue = String(value);
+          if (strValue.includes(',')) {
+            return `"${strValue}"`;
+          }
+          return strValue;
+        }).join(',')
+      ).join('\n');
+
+      return `${headers}\n${rows}`;
+    } catch (error) {
+      console.error('Error exporting clients CSV:', error);
+      return '';
     }
   }
-}
+} 

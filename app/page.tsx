@@ -258,6 +258,77 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* Pricing Section */}
+      <section className="py-16 sm:py-20 px-4 bg-gradient-to-b from-black via-green-950/60 to-black relative">
+        <div className="container mx-auto max-w-6xl">
+          <div className="text-center mb-12 sm:mb-16">
+            <h2 className="text-3xl sm:text-4xl font-bold text-white mb-4">Simple, Transparent Pricing</h2>
+            <p className="text-gray-400 max-w-2xl mx-auto text-lg">
+              Choose the plan that fits your business. No hidden fees. Cancel anytime.
+            </p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            {/* Free Plan */}
+            <Card className="bg-green-900/20 border-green-500/30 hover:border-green-400/50 transition-all duration-300 hover:scale-105 backdrop-blur-sm group">
+              <CardHeader className="pb-4 text-center">
+                <CardTitle className="text-2xl text-white mb-2">Free</CardTitle>
+                <div className="text-4xl font-bold text-green-400 mb-2">$0</div>
+                <CardDescription className="text-green-muted">For individuals and freelancers just getting started</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <ul className="text-green-muted space-y-3 mb-6">
+                  <li>✔️ Unlimited invoices</li>
+                  <li>✔️ 3 clients</li>
+                  <li>✔️ Basic analytics</li>
+                  <li>✔️ Email support</li>
+                </ul>
+                <Link href="/auth/signup">
+                  <Button className="w-full bg-gradient-to-r from-green-500 to-green-600 text-black font-bold">Get Started</Button>
+                </Link>
+              </CardContent>
+            </Card>
+            {/* Pro Plan */}
+            <Card className="bg-gradient-to-br from-green-600/80 to-green-800/80 border-green-500/50 shadow-2xl scale-105 group">
+              <CardHeader className="pb-4 text-center">
+                <CardTitle className="text-2xl text-white mb-2 flex items-center justify-center gap-2">Pro <Badge className="bg-yellow-400/20 text-yellow-300 border-yellow-400/30 ml-2">Most Popular</Badge></CardTitle>
+                <div className="text-4xl font-bold text-yellow-400 mb-2">₹299<span className="text-lg text-gray-300 font-normal">/mo</span></div>
+                <CardDescription className="text-green-muted">For growing businesses that need more power</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <ul className="text-green-muted space-y-3 mb-6">
+                  <li>✔️ Unlimited invoices & clients</li>
+                  <li>✔️ Advanced analytics & reports</li>
+                  <li>✔️ Payment reminders & automation</li>
+                  <li>✔️ Priority email support</li>
+                </ul>
+                <Link href="/auth/signup">
+                  <Button className="w-full bg-yellow-400 text-black font-bold hover:bg-yellow-500">Start Pro Trial</Button>
+                </Link>
+              </CardContent>
+            </Card>
+            {/* Business Plan */}
+            <Card className="bg-green-900/20 border-green-500/30 hover:border-green-400/50 transition-all duration-300 hover:scale-105 backdrop-blur-sm group">
+              <CardHeader className="pb-4 text-center">
+                <CardTitle className="text-2xl text-white mb-2">Business</CardTitle>
+                <div className="text-4xl font-bold text-green-400 mb-2">₹999<span className="text-lg text-gray-300 font-normal">/mo</span></div>
+                <CardDescription className="text-green-muted">For teams and enterprises with advanced needs</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <ul className="text-green-muted space-y-3 mb-6">
+                  <li>✔️ Everything in Pro</li>
+                  <li>✔️ Team management</li>
+                  <li>✔️ Custom branding</li>
+                  <li>✔️ Dedicated support</li>
+                </ul>
+                <Link href="/auth/signup">
+                  <Button className="w-full bg-gradient-to-r from-green-500 to-green-600 text-black font-bold">Contact Sales</Button>
+                </Link>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      </section>
+
       {/* Premium Footer */}
       <footer className="bg-green-900/20 border-t border-green-500/30 text-white py-12 px-4 backdrop-blur-sm">
         <div className="container mx-auto text-center max-w-4xl">
@@ -281,7 +352,7 @@ export default function LandingPage() {
           </div>
           <div className="pt-8 border-t border-green-500/30">
             <p className="text-gray-400 text-sm">
-              © 2024 SmartInvoice. All rights reserved. Built with ❤️ for professionals worldwide.
+              © 2024 SmartInvoice &nbsp;|&nbsp; Cofounder & CEO: Harsh Bhardwaj
             </p>
           </div>
         </div>

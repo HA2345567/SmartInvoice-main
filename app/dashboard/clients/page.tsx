@@ -13,22 +13,7 @@ import { Users, Search, Mail, MapPin, FileText, DollarSign, Plus, Edit, Trash2, 
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { format } from 'date-fns';
-
-interface Client {
-  id: string;
-  name: string;
-  email: string;
-  company?: string;
-  address: string;
-  gstNumber?: string;
-  currency: string;
-  totalInvoices: number;
-  totalAmount: number;
-  lastInvoiceDate?: string;
-  isActive: boolean;
-  createdAt: string;
-  updatedAt: string;
-}
+import { Client } from '@/lib/types';
 
 const currencies = [
   { value: 'USD', label: 'USD - US Dollar' },
@@ -477,7 +462,7 @@ export default function ClientsPage() {
                   <div className="flex items-center space-x-3">
                     <div className="w-12 h-12 bg-zinc-800 rounded-full flex items-center justify-center group-hover:bg-zinc-700 transition-colors">
                       <span className="text-lg font-semibold text-white">
-                        {client.name.charAt(0).toUpperCase()}
+                        {(client.name || 'C').charAt(0).toUpperCase()}
                       </span>
                     </div>
                     <div className="flex-1 min-w-0">
@@ -548,7 +533,7 @@ export default function ClientsPage() {
                       <DollarSign className="w-4 h-4 text-zinc-400" />
                       <span className="text-sm text-zinc-400">Total</span>
                     </div>
-                    <p className="text-lg font-semibold text-white">{client.currency}{client.totalAmount.toFixed(0)}</p>
+                    <p className="text-lg font-semibold text-white">{client.currency}{(client.totalAmount || 0).toFixed(0)}</p>
                   </div>
                 </div>
 

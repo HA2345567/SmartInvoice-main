@@ -9,16 +9,15 @@ import { useAuth } from '@/contexts/AuthContext';
 
 interface Analytics {
   totalRevenue: number;
-  paidAmount: number;
-  unpaidAmount: number;
-  overdueAmount: number;
-  monthlyRevenue: number;
   totalInvoices: number;
   paidInvoices: number;
-  unpaidInvoices: number;
-  overdueInvoices: number;
-  draftInvoices: number;
+  pendingInvoices: number;
   averageInvoiceValue: number;
+  monthlyData: Array<{
+    month: string;
+    revenue: number;
+    invoices: number;
+  }>;
   topClients: Array<{
     id: string;
     name: string;
@@ -26,11 +25,12 @@ interface Analytics {
     totalAmount: number;
     totalInvoices: number;
   }>;
-  monthlyData: Array<{
-    month: string;
-    revenue: number;
-    invoices: number;
-  }>;
+  invoiceStatusDistribution: {
+    paid: number;
+    pending: number;
+    draft: number;
+    overdue: number;
+  };
 }
 
 export default function AnalyticsPage() {
@@ -93,32 +93,35 @@ export default function AnalyticsPage() {
     );
   }
 
+  const currentMonth = new Date().toLocaleString('default', { month: 'short', year: '2-digit' });
+  const currentMonthRevenue = analytics.monthlyData.find(m => m.month === currentMonth)?.revenue || 0;
+
   const stats = [
     {
       title: 'Total Revenue',
       value: `$${analytics.totalRevenue.toLocaleString()}`,
-      change: `$${analytics.monthlyRevenue.toLocaleString()} this month`,
+      change: `$${currentMonthRevenue.toLocaleString()} this month`,
       changeType: 'positive' as const,
       icon: DollarSign,
     },
     {
-      title: 'Unpaid Amount',
-      value: `$${analytics.unpaidAmount.toLocaleString()}`,
-      change: `${analytics.unpaidInvoices} pending invoices`,
-      changeType: 'neutral' as const,
+      title: 'Pending Invoices',
+      value: analytics.pendingInvoices.toLocaleString(),
+      change: `${analytics.invoiceStatusDistribution.overdue} overdue`,
+      changeType: analytics.invoiceStatusDistribution.overdue > 0 ? 'negative' : 'neutral' as const,
       icon: AlertCircle,
     },
     {
       title: 'Total Invoices',
       value: analytics.totalInvoices.toString(),
-      change: `${analytics.paidInvoices} paid, ${analytics.overdueInvoices} overdue`,
-      changeType: analytics.overdueInvoices > 0 ? 'negative' : 'positive',
+      change: `${analytics.paidInvoices} paid, ${analytics.invoiceStatusDistribution.draft} drafts`,
+      changeType: 'neutral' as const,
       icon: FileText,
     },
     {
       title: 'Average Invoice',
       value: `$${analytics.averageInvoiceValue.toLocaleString()}`,
-      change: `${analytics.draftInvoices} drafts pending`,
+      change: 'Average value of paid invoices',
       changeType: 'neutral' as const,
       icon: TrendingUp,
     },
@@ -171,27 +174,34 @@ export default function AnalyticsPage() {
             <CardDescription className="text-green-muted">Revenue trends over the last 6 months</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="space-y-4">
-              {analytics.monthlyData.map((month, index) => (
-                <div key={index} className="flex items-center justify-between">
-                  <span className="text-sm text-green-muted">{month.month}</span>
-                  <div className="flex items-center space-x-4">
-                    <div className="w-32 bg-green-500/20 rounded h-2">
-                      <div 
-                        className="bg-green-500 h-2 rounded" 
-                        style={{ 
-                          width: `${analytics.monthlyData.length > 0 ? 
-                            (month.revenue / Math.max(...analytics.monthlyData.map(m => m.revenue))) * 100 : 0}%` 
-                        }}
-                      ></div>
+            {analytics.monthlyData.length === 0 ? (
+              <div className="text-center py-8">
+                <BarChart3 className="w-8 h-8 text-green-muted mx-auto mb-2" />
+                <p className="text-green-muted">Revenue data from paid invoices will appear here.</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {analytics.monthlyData.map((month, index) => (
+                  <div key={index} className="flex items-center justify-between">
+                    <span className="text-sm text-green-muted">{month.month}</span>
+                    <div className="flex items-center space-x-4">
+                      <div className="w-32 bg-green-500/20 rounded h-2">
+                        <div 
+                          className="bg-green-500 h-2 rounded" 
+                          style={{ 
+                            width: `${analytics.monthlyData.length > 0 ? 
+                              (month.revenue / Math.max(...analytics.monthlyData.map(m => m.revenue))) * 100 : 0}%` 
+                          }}
+                        ></div>
+                      </div>
+                      <span className="text-sm font-medium text-white w-20 text-right">
+                        ${month.revenue.toLocaleString()}
+                      </span>
                     </div>
-                    <span className="text-sm font-medium text-white w-20 text-right">
-                      ${month.revenue.toLocaleString()}
-                    </span>
                   </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -216,7 +226,7 @@ export default function AnalyticsPage() {
                   <div key={client.id} className="flex items-center justify-between p-3 bg-green-500/5 rounded-lg">
                     <div className="flex items-center space-x-3">
                       <div className="w-10 h-10 bg-green-500/20 rounded-full flex items-center justify-center text-sm font-semibold text-green-primary border border-green-500/30">
-                        {client.name.charAt(0).toUpperCase()}
+                        {(client.name || 'C').charAt(0).toUpperCase()}
                       </div>
                       <div>
                         <p className="text-sm font-medium text-white">{client.name}</p>
@@ -250,28 +260,24 @@ export default function AnalyticsPage() {
           <CardDescription className="text-green-muted">Breakdown of invoice statuses</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-            <div className="text-center p-4 bg-green-500/10 rounded-lg border border-green-500/20">
-              <div className="text-2xl font-bold text-green-primary">{analytics.paidInvoices}</div>
-              <div className="text-sm text-green-muted">Paid</div>
-              <div className="text-xs text-green-muted mt-1">${analytics.paidAmount.toLocaleString()}</div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="text-center p-4 bg-green-500/10 rounded-lg border border-green-500/20">
+                <div className="text-2xl font-bold text-green-primary">{analytics.invoiceStatusDistribution.paid}</div>
+                <div className="text-sm text-green-muted">Paid</div>
+              </div>
+              <div className="text-center p-4 bg-blue-500/10 rounded-lg border border-blue-500/20">
+                <div className="text-2xl font-bold text-blue-400">{analytics.invoiceStatusDistribution.pending}</div>
+                <div className="text-sm text-green-muted">Pending</div>
+              </div>
+              <div className="text-center p-4 bg-red-500/10 rounded-lg border border-red-500/20">
+                <div className="text-2xl font-bold text-red-400">{analytics.invoiceStatusDistribution.overdue}</div>
+                <div className="text-sm text-green-muted">Overdue</div>
+              </div>
+              <div className="text-center p-4 bg-gray-500/10 rounded-lg border border-gray-500/20">
+                <div className="text-2xl font-bold text-gray-400">{analytics.invoiceStatusDistribution.draft}</div>
+                <div className="text-sm text-green-muted">Drafts</div>
+              </div>
             </div>
-            <div className="text-center p-4 bg-blue-500/10 rounded-lg border border-blue-500/20">
-              <div className="text-2xl font-bold text-blue-400">{analytics.unpaidInvoices}</div>
-              <div className="text-sm text-green-muted">Pending</div>
-              <div className="text-xs text-green-muted mt-1">${analytics.unpaidAmount.toLocaleString()}</div>
-            </div>
-            <div className="text-center p-4 bg-red-500/10 rounded-lg border border-red-500/20">
-              <div className="text-2xl font-bold text-red-400">{analytics.overdueInvoices}</div>
-              <div className="text-sm text-green-muted">Overdue</div>
-              <div className="text-xs text-green-muted mt-1">${analytics.overdueAmount.toLocaleString()}</div>
-            </div>
-            <div className="text-center p-4 bg-gray-500/10 rounded-lg border border-gray-500/20">
-              <div className="text-2xl font-bold text-gray-400">{analytics.draftInvoices}</div>
-              <div className="text-sm text-green-muted">Drafts</div>
-              <div className="text-xs text-green-muted mt-1">Not sent</div>
-            </div>
-          </div>
         </CardContent>
       </Card>
     </div>

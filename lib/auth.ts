@@ -5,8 +5,13 @@ import { DatabaseService } from './database';
 
 function getJwtSecret(): string {
   const secret = process.env.JWT_SECRET;
-  if (!secret || secret === 'your-super-secret-jwt-key-change-in-production') {
+  if (!secret) {
+    console.error('JWT_SECRET environment variable is not set');
     throw new Error('JWT_SECRET environment variable is not set. Please set it in your environment variables for security.');
+  }
+  if (secret === 'your-super-secret-jwt-key-change-in-production') {
+    console.error('JWT_SECRET is using the default value. Please change it in production.');
+    throw new Error('JWT_SECRET environment variable is using the default value. Please set a secure secret in your environment variables.');
   }
   return secret;
 }
@@ -16,9 +21,18 @@ export interface User {
   email: string;
   name: string;
   company?: string;
+  companyAddress?: string;
+  companyGST?: string;
+  companyPhone?: string;
+  companyWebsite?: string;
   avatar?: string;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface AuthResult {
+  user: User;
+  userId: string;
 }
 
 export class AuthService {
@@ -36,8 +50,11 @@ export class AuthService {
 
   static verifyToken(token: string): { userId: string } | null {
     try {
-      return jwt.verify(token, getJwtSecret()) as unknown as { userId: string };
-    } catch {
+      const secret = getJwtSecret();
+      const decoded = jwt.verify(token, secret) as unknown as { userId: string };
+      return decoded;
+    } catch (error) {
+      console.error('Token verification failed:', error);
       return null;
     }
   }
@@ -79,22 +96,52 @@ export class AuthService {
   }
 
   static async getUserFromRequest(request: NextRequest): Promise<User | null> {
-    const authHeader = request.headers.get('authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    try {
+      const authHeader = request.headers.get('authorization');
+      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        console.log('No valid authorization header found');
+        return null;
+      }
+
+      const token = authHeader.substring(7);
+      console.log('Verifying token:', token.substring(0, 20) + '...');
+      
+      const decoded = this.verifyToken(token);
+      if (!decoded) {
+        console.log('Token verification failed');
+        return null;
+      }
+
+      console.log('Token verified, getting user with ID:', decoded.userId);
+      const user = await this.getUserById(decoded.userId);
+      
+      if (!user) {
+        console.log('User not found for ID:', decoded.userId);
+      } else {
+        console.log('User found:', user.email);
+      }
+      
+      return user;
+    } catch (error) {
+      console.error('Error in getUserFromRequest:', error);
       return null;
     }
-
-    const token = authHeader.substring(7);
-    const decoded = this.verifyToken(token);
-    if (!decoded) {
-      return null;
-    }
-
-    return this.getUserById(decoded.userId);
   }
 
   static async userExists(email: string): Promise<boolean> {
     const user = await DatabaseService.getUserByEmail(email);
     return !!user;
   }
+}
+
+export async function verifyAuth(request: NextRequest): Promise<AuthResult | null> {
+  const user = await AuthService.getUserFromRequest(request);
+  if (!user) {
+    return null;
+  }
+  
+  return {
+    user,
+    userId: user.id
+  };
 }

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { DatabaseService } from '@/lib/database';
 import { AuthService } from '@/lib/auth';
-import { PDFGenerator } from '@/lib/pdf-generator';
+import { PremiumPDFGenerator } from '@/lib/pdf-generator';
 
 export async function GET(
   request: NextRequest,
@@ -18,8 +18,8 @@ export async function GET(
       return NextResponse.json({ error: 'Invoice not found' }, { status: 404 });
     }
 
-    const generator = new PDFGenerator();
-    const pdfBuffer = generator.generatePDF({
+    // Prepare invoice data for the template
+    const invoiceData = {
       invoiceNumber: invoice.invoiceNumber,
       date: invoice.date,
       dueDate: invoice.dueDate,
@@ -33,17 +33,33 @@ export async function GET(
       notes: invoice.notes,
       terms: invoice.terms,
       subtotal: invoice.subtotal,
+      amount: invoice.amount,
       taxAmount: invoice.taxAmount,
       discountAmount: invoice.discountAmount,
-      amount: invoice.amount,
       taxRate: invoice.taxRate,
       discountRate: invoice.discountRate,
       paymentLink: invoice.paymentLink,
       companyName: user.company || 'SmartInvoice',
-      companyAddress: 'Your Company Address\nCity, State - PIN',
-      companyGST: 'Your GST Number',
+      companyAddress: user.companyAddress || 'Your Company Address\nCity, State - PIN',
+      companyGST: user.companyGST || 'Your GST Number',
       companyEmail: user.email,
-    });
+      companyPhone: user.companyPhone || '',
+      companyWebsite: user.companyWebsite || '',
+      invoiceStatus: (() => {
+        switch (invoice.status) {
+          case 'paid': return 'PAID' as const;
+          case 'sent': return 'DUE' as const;
+          case 'overdue': return 'OVERDUE' as const;
+          case 'draft': return 'PENDING' as const;
+          default: return 'PENDING' as const;
+        }
+      })(),
+      theme: 'professional' as const
+    };
+
+    // Generate PDF using PremiumPDFGenerator
+    const generator = new PremiumPDFGenerator();
+    const pdfBuffer = generator.generatePDF(invoiceData);
 
     return new NextResponse(pdfBuffer, {
       headers: {

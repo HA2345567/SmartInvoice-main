@@ -28,25 +28,76 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const router = useRouter();
 
+  const verifyAndRefreshToken = useCallback(async () => {
+    const storedToken = localStorage.getItem('auth_token');
+    console.log('Verifying token from localStorage:', storedToken ? 'Token exists' : 'No token');
+    
+    if (!storedToken) {
+      setLoading(false);
+      return;
+    }
+
+    try {
+      console.log('Making request to /api/auth/me with token');
+      const response = await fetch('/api/auth/me', {
+        headers: {
+          'Authorization': `Bearer ${storedToken}`,
+        },
+      });
+
+      console.log('Auth check response status:', response.status);
+
+      if (response.ok) {
+        const { user: refreshedUser, token: refreshedToken } = await response.json();
+        console.log('Auth check successful, user:', refreshedUser.email);
+        setUser(refreshedUser);
+        setToken(refreshedToken);
+        localStorage.setItem('auth_token', refreshedToken);
+        localStorage.setItem('auth_user', JSON.stringify(refreshedUser));
+      } else if (response.status === 401) {
+        console.log('Token is invalid or expired, clearing storage');
+        // Token is invalid or expired, clear storage but don't redirect immediately
+        localStorage.removeItem('auth_token');
+        localStorage.removeItem('auth_user');
+        setUser(null);
+        setToken(null);
+        // Only redirect if we're on a protected route
+        if (window.location.pathname.startsWith('/dashboard')) {
+          router.push('/auth/login');
+        }
+      } else {
+        // Other errors - don't logout, just log the error
+        console.error('Session verification failed with status:', response.status);
+      }
+    } catch (error) {
+      console.error("Session verification failed", error);
+      // Don't logout on network errors, just log the error
+      // This prevents redirects due to temporary network issues
+    } finally {
+      setLoading(false);
+    }
+  }, [router]);
+
   useEffect(() => {
-    // Check for stored auth data on mount
+    // Initialize from localStorage first
     const storedToken = localStorage.getItem('auth_token');
     const storedUser = localStorage.getItem('auth_user');
-
+    
     if (storedToken && storedUser) {
       try {
+        const parsedUser = JSON.parse(storedUser);
+        setUser(parsedUser);
         setToken(storedToken);
-        setUser(JSON.parse(storedUser));
       } catch (error) {
-        console.error('Error parsing stored user data:', error);
-        // Clear invalid data
+        console.error('Failed to parse stored user data:', error);
         localStorage.removeItem('auth_token');
         localStorage.removeItem('auth_user');
       }
     }
     
-    setLoading(false);
-  }, []);
+    // Then verify the token with the server
+    verifyAndRefreshToken();
+  }, [verifyAndRefreshToken]);
 
   const login = useCallback(async (email: string, password: string): Promise<{ success: boolean; error?: string; userNotFound?: boolean }> => {
     try {
@@ -161,11 +212,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const logout = useCallback(() => {
-    setUser(null);
-    setToken(null);
+    console.log('Logout called - clearing authentication data');
     localStorage.removeItem('auth_token');
     localStorage.removeItem('auth_user');
-    router.push('/');
+    setUser(null);
+    setToken(null);
+    // Only redirect if we're not already on the home page
+    if (window.location.pathname !== '/') {
+      router.push('/');
+    }
   }, [router]);
 
   const contextValue = useMemo(() => ({

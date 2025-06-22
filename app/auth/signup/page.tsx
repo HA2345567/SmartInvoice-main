@@ -78,7 +78,9 @@ export default function SignupPage() {
           title: 'Success!',
           description: 'Your account has been created successfully.',
         });
-        router.push('/dashboard');
+        setTimeout(() => {
+          router.push('/dashboard');
+        }, 100);
       } else {
         if (result.userExists) {
           toast({

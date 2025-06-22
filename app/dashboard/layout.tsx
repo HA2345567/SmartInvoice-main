@@ -23,10 +23,31 @@ export default function DashboardLayout({
   const { toast } = useToast();
 
   useEffect(() => {
-    if (!loading && !user) {
-      router.push('/auth/login');
+    // Only check authentication after loading is complete
+    if (!loading) {
+      // Check if we have a stored token as a fallback
+      const storedToken = localStorage.getItem('auth_token');
+      const storedUser = localStorage.getItem('auth_user');
+      
+      // If we have stored data but context doesn't have user/token, 
+      // wait a bit more for the context to sync
+      if (storedToken && storedUser && !user && !token) {
+        // Give the context a moment to sync from localStorage
+        const timeoutId = setTimeout(() => {
+          if (!user && !token) {
+            router.push('/auth/login');
+          }
+        }, 1000);
+        
+        return () => clearTimeout(timeoutId);
+      }
+      
+      // If no stored data and no user/token, redirect to login
+      if (!storedToken && !user && !token) {
+        router.push('/auth/login');
+      }
     }
-  }, [user, loading, router]);
+  }, [user, loading, token, router]);
 
   const navigation = useMemo(() => [
     { name: 'Dashboard', href: '/dashboard', icon: Home },
@@ -132,8 +153,27 @@ export default function DashboardLayout({
     );
   }
 
+  // Only return null if we're not loading and definitely have no user
+  if (!loading && !user && !token) {
+    // Check localStorage as a fallback
+    const storedToken = localStorage.getItem('auth_token');
+    const storedUser = localStorage.getItem('auth_user');
+    
+    if (!storedToken || !storedUser) {
+      return null;
+    }
+  }
+
+  // Ensure we have a user before rendering the layout
   if (!user) {
-    return null;
+    return (
+      <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center">
+        <div className="text-center">
+          <div className="spinner-dark w-12 h-12 mx-auto mb-4"></div>
+          <p className="text-dark-muted">Loading user data...</p>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -251,12 +291,12 @@ export default function DashboardLayout({
           <div className="border-t border-white/10 p-3 sm:p-4 flex-shrink-0">
             <div className="flex items-center space-x-2 sm:space-x-3 mb-3 sm:mb-4">
               <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-green-400/20 to-green-600/20 rounded-full flex items-center justify-center text-dark-primary font-semibold border border-green-500/30 flex-shrink-0">
-                {user.name.charAt(0).toUpperCase()}
+                {(user?.name || 'U').charAt(0).toUpperCase()}
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-xs sm:text-sm font-medium text-white truncate">{user.name}</p>
-                <p className="text-xs text-dark-muted truncate">{user.email}</p>
-                {user.company && (
+                <p className="text-xs sm:text-sm font-medium text-white truncate">{user?.name || 'User'}</p>
+                <p className="text-xs text-dark-muted truncate">{user?.email || ''}</p>
+                {user?.company && (
                   <p className="text-xs text-dark-muted/70 truncate hidden sm:block">{user.company}</p>
                 )}
               </div>
@@ -311,12 +351,17 @@ export default function DashboardLayout({
         </div>
 
         {/* Page content */}
-        <main className="content-area-responsive">
+        <main className="content-area-responsive mobile-safe-area">
           <div className="max-w-7xl mx-auto">
             {children}
           </div>
         </main>
       </div>
+
+      {/* Mobile Floating Action Button */}
+      <Link href="/dashboard/create" className="mobile-fab">
+        <Plus className="w-6 h-6" />
+      </Link>
 
       {/* Feedback Widget */}
       <FeedbackWidget />

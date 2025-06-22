@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { DatabaseService } from '@/lib/database-enhanced';
+import { DatabaseService } from '@/lib/database';
 import { AuthService } from '@/lib/auth';
 import { ReminderService } from '@/lib/reminder-service';
-import { EmailService } from '@/lib/email-enhanced';
+import { EmailService } from '@/lib/email-service';
 
 export async function POST(request: NextRequest) {
   try {
@@ -54,27 +54,21 @@ export async function POST(request: NextRequest) {
         let emailSent = false;
 
         // Send email if configured and requested
-        if (sendEmail && process.env.EMAIL_HOST && process.env.EMAIL_USER) {
+        if (sendEmail && process.env.EMAIL_USER && process.env.EMAIL_PASS) {
           try {
-            const emailService = new EmailService({
-              host: process.env.EMAIL_HOST,
-              port: parseInt(process.env.EMAIL_PORT || '587'),
-              secure: process.env.EMAIL_SECURE === 'true',
-              auth: {
-                user: process.env.EMAIL_USER,
-                pass: process.env.EMAIL_PASS || '',
-              },
-            });
-
+            console.log('EMAIL_USER:', process.env.EMAIL_USER, 'EMAIL_PASS:', process.env.EMAIL_PASS);
+            const emailService = new EmailService();
             emailSent = await emailService.sendEmail({
               to: invoice.clientEmail,
               subject: reminderInfo.subject,
-              html: EmailService.generateReminderEmail(invoice, {
-                name: user.company || user.name,
-                email: user.email,
-                address: 'Your Company Address\nCity, State - PIN',
-                gst: 'Your GST Number',
-              }, daysOverdue),
+              html: EmailService.generatePaymentReminderEmail(
+                invoice.clientName,
+                invoice.invoiceNumber,
+                invoice.clientCurrency,
+                invoice.amount,
+                invoice.dueDate,
+                invoice.paymentLink || ''
+              ),
             });
           } catch (emailError) {
             console.error('Email sending error:', emailError);

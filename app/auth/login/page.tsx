@@ -42,7 +42,9 @@ export default function LoginPage() {
           title: 'Success!',
           description: 'You have been logged in successfully.',
         });
-        router.push('/dashboard');
+        setTimeout(() => {
+          router.push('/dashboard');
+        }, 100);
       } else {
         toast({
           title: 'Login Failed',

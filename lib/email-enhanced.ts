@@ -1,60 +1,61 @@
 import nodemailer from 'nodemailer';
-
-export interface EmailConfig {
-  host: string;
-  port: number;
-  secure: boolean;
-  auth: {
-    user: string;
-    pass: string;
-  };
-}
-
-export interface EmailData {
-  to: string;
-  subject: string;
-  html: string;
-  attachments?: Array<{
-    filename: string;
-    content: Buffer;
-    contentType: string;
-  }>;
-}
+import { EmailConfig, EmailData, CompanyData, Invoice, User } from './types';
+import appConfig from './config'; // renamed to avoid conflict with constructor param
 
 export class EmailService {
   private transporter: nodemailer.Transporter;
 
-  constructor(config: EmailConfig) {
-    this.transporter = nodemailer.createTransport(config);
+  constructor(emailConfig: EmailConfig) {
+    this.transporter = nodemailer.createTransport(emailConfig);
   }
 
   async sendEmail(emailData: EmailData): Promise<boolean> {
     try {
       const info = await this.transporter.sendMail({
-        from: process.env.EMAIL_FROM || 'noreply@smartinvoice.com',
+        from: appConfig.email.from,
         to: emailData.to,
         subject: emailData.subject,
         html: emailData.html,
-        attachments: emailData.attachments,
+        attachments: emailData.attachments || [],
       });
-      console.log('Email sent successfully:', {
+
+      // Always log SMTP response for debugging
+      console.log('[EmailService] Email sent:', {
         messageId: info.messageId,
         to: emailData.to,
         subject: emailData.subject,
-        response: info.response
+        response: info.response,
+        envelope: info.envelope,
+        accepted: info.accepted,
+        rejected: info.rejected,
+        pending: info.pending,
       });
+
       return true;
-    } catch (error) {
-      console.error('Email sending failed:', {
+    } catch (error: any) {
+      console.error('[EmailService] Email sending failed:', {
         to: emailData.to,
         subject: emailData.subject,
-        error
+        error: error.message,
+        stack: error.stack,
       });
       return false;
     }
   }
 
-  static generateInvoiceEmail(invoiceData: any, companyData: any): string {
+  async testConnection(): Promise<boolean> {
+    try {
+      await this.transporter.verify();
+      return true;
+    } catch (error: any) {
+      if (appConfig.isDevelopment) {
+        console.error('Email connection test failed:', error.message);
+      }
+      return false;
+    }
+  }
+
+  static generateInvoiceEmail(invoiceData: Invoice, companyData: CompanyData): string {
     return `
       <!DOCTYPE html>
       <html>
@@ -79,7 +80,7 @@ export class EmailService {
             box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
           }
           .header { 
-            background: linear-gradient(135deg, #000 0%, #333 100%); 
+            background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%); 
             color: white; 
             padding: 30px; 
             text-align: center; 
@@ -89,10 +90,6 @@ export class EmailService {
             font-size: 28px; 
             font-weight: 700; 
           }
-          .header p { 
-            margin: 5px 0 0 0; 
-            opacity: 0.9; 
-          }
           .content { 
             padding: 30px; 
           }
@@ -101,28 +98,19 @@ export class EmailService {
             padding: 20px; 
             margin: 20px 0; 
             border-radius: 8px; 
-            border-left: 4px solid #000; 
-          }
-          .invoice-details h3 { 
-            margin: 0 0 15px 0; 
-            color: #000; 
-          }
-          .detail-row { 
-            display: flex; 
-            justify-content: space-between; 
-            margin: 8px 0; 
+            border-left: 4px solid #22c55e; 
           }
           .amount { 
             font-size: 32px; 
             font-weight: 700; 
-            color: #000; 
+            color: #22c55e; 
             text-align: center; 
             margin: 20px 0; 
           }
           .button { 
             display: inline-block; 
             padding: 15px 30px; 
-            background: #000; 
+            background: #22c55e; 
             color: white; 
             text-decoration: none; 
             border-radius: 6px; 
@@ -130,35 +118,12 @@ export class EmailService {
             text-align: center; 
             margin: 20px 0; 
           }
-          .button:hover { 
-            background: #333; 
-          }
           .footer { 
             text-align: center; 
             padding: 30px; 
             background: #f8f9fa; 
             color: #666; 
             border-top: 1px solid #e9ecef; 
-          }
-          .items-table { 
-            width: 100%; 
-            border-collapse: collapse; 
-            margin: 20px 0; 
-          }
-          .items-table th, .items-table td { 
-            padding: 12px; 
-            text-align: left; 
-            border-bottom: 1px solid #e9ecef; 
-          }
-          .items-table th { 
-            background: #f8f9fa; 
-            font-weight: 600; 
-          }
-          .company-info { 
-            margin: 20px 0; 
-            padding: 15px; 
-            background: #f8f9fa; 
-            border-radius: 6px; 
           }
         </style>
       </head>
@@ -175,42 +140,10 @@ export class EmailService {
             
             <div class="invoice-details">
               <h3>Invoice #${invoiceData.invoiceNumber}</h3>
-              <div class="detail-row">
-                <span><strong>Invoice Date:</strong></span>
-                <span>${new Date(invoiceData.date).toLocaleDateString()}</span>
-              </div>
-              <div class="detail-row">
-                <span><strong>Due Date:</strong></span>
-                <span>${new Date(invoiceData.dueDate).toLocaleDateString()}</span>
-              </div>
-              <div class="detail-row">
-                <span><strong>Status:</strong></span>
-                <span style="text-transform: capitalize; color: #007bff;">${invoiceData.status}</span>
-              </div>
+              <p><strong>Invoice Date:</strong> ${new Date(invoiceData.date).toLocaleDateString()}</p>
+              <p><strong>Due Date:</strong> ${new Date(invoiceData.dueDate).toLocaleDateString()}</p>
+              <p><strong>Status:</strong> ${invoiceData.status}</p>
             </div>
-
-            ${invoiceData.items && invoiceData.items.length > 0 ? `
-              <table class="items-table">
-                <thead>
-                  <tr>
-                    <th>Description</th>
-                    <th>Qty</th>
-                    <th>Rate</th>
-                    <th>Amount</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  ${invoiceData.items.map((item: any) => `
-                    <tr>
-                      <td>${item.description}</td>
-                      <td>${item.quantity}</td>
-                      <td>${invoiceData.clientCurrency || '$'}${item.rate.toFixed(2)}</td>
-                      <td>${invoiceData.clientCurrency || '$'}${item.amount.toFixed(2)}</td>
-                    </tr>
-                  `).join('')}
-                </tbody>
-              </table>
-            ` : ''}
             
             <div class="amount">
               Total: ${invoiceData.clientCurrency || '$'}${invoiceData.amount.toFixed(2)}
@@ -222,21 +155,6 @@ export class EmailService {
               </div>
             ` : ''}
             
-            ${invoiceData.notes ? `
-              <div style="margin: 20px 0; padding: 15px; background: #f8f9fa; border-radius: 6px;">
-                <h4 style="margin: 0 0 10px 0;">Notes:</h4>
-                <p style="margin: 0;">${invoiceData.notes}</p>
-              </div>
-            ` : ''}
-
-            ${companyData.address ? `
-              <div class="company-info">
-                <h4 style="margin: 0 0 10px 0;">Company Information:</h4>
-                <p style="margin: 0; white-space: pre-line;">${companyData.address}</p>
-                ${companyData.gst ? `<p style="margin: 5px 0 0 0;"><strong>GST:</strong> ${companyData.gst}</p>` : ''}
-              </div>
-            ` : ''}
-            
             <p>If you have any questions about this invoice, please don't hesitate to contact us.</p>
             <p>Thank you for your business!</p>
           </div>
@@ -244,9 +162,6 @@ export class EmailService {
           <div class="footer">
             <p><strong>${companyData.name || 'SmartInvoice'}</strong></p>
             <p>Professional Invoice Management System</p>
-            <p style="font-size: 12px; margin-top: 15px;">
-              This is an automated email. Please do not reply directly to this message.
-            </p>
           </div>
         </div>
       </body>
@@ -254,7 +169,10 @@ export class EmailService {
     `;
   }
 
-  static generateReminderEmail(invoiceData: any, companyData: any, daysOverdue: number): string {
+  static generateReminderEmail(invoiceData: Invoice, companyData: CompanyData, daysOverdue: number): string {
+    const urgency = daysOverdue > 14 ? 'high' : daysOverdue > 7 ? 'medium' : 'low';
+    const urgencyColor = urgency === 'high' ? '#dc2626' : urgency === 'medium' ? '#f59e0b' : '#22c55e';
+    
     return `
       <!DOCTYPE html>
       <html>
@@ -279,7 +197,7 @@ export class EmailService {
             box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
           }
           .header { 
-            background: linear-gradient(135deg, #dc2626 0%, #ef4444 100%); 
+            background: linear-gradient(135deg, ${urgencyColor} 0%, ${urgencyColor}dd 100%); 
             color: white; 
             padding: 30px; 
             text-align: center; 
@@ -292,37 +210,24 @@ export class EmailService {
           .content { 
             padding: 30px; 
           }
-          .urgent-notice { 
+          .reminder-details { 
             background: #fef2f2; 
-            border: 2px solid #fecaca; 
-            padding: 20px; 
-            border-radius: 8px; 
-            margin: 20px 0; 
-            text-align: center; 
-          }
-          .urgent-notice h3 { 
-            color: #dc2626; 
-            margin: 0 0 10px 0; 
-            font-size: 20px; 
-          }
-          .invoice-details { 
-            background: #f8f9fa; 
             padding: 20px; 
             margin: 20px 0; 
             border-radius: 8px; 
-            border-left: 4px solid #dc2626; 
+            border-left: 4px solid ${urgencyColor}; 
           }
           .amount { 
             font-size: 32px; 
             font-weight: 700; 
-            color: #dc2626; 
+            color: ${urgencyColor}; 
             text-align: center; 
             margin: 20px 0; 
           }
           .button { 
             display: inline-block; 
             padding: 15px 30px; 
-            background: #dc2626; 
+            background: ${urgencyColor}; 
             color: white; 
             text-decoration: none; 
             border-radius: 6px; 
@@ -342,26 +247,23 @@ export class EmailService {
       <body>
         <div class="container">
           <div class="header">
-            <h1>⚠️ Payment Reminder</h1>
-            <p>${companyData.name || 'SmartInvoice'}</p>
+            <h1>Payment Reminder</h1>
+            <p>Invoice ${invoiceData.invoiceNumber} - ${daysOverdue} Days Overdue</p>
           </div>
           
           <div class="content">
             <h2>Hello ${invoiceData.clientName},</h2>
+            <p>This is a friendly reminder that your invoice payment is overdue.</p>
             
-            <div class="urgent-notice">
-              <h3>Payment Overdue</h3>
-              <p>This invoice is <strong>${daysOverdue} days overdue</strong>. Please arrange payment at your earliest convenience to avoid any service interruption.</p>
-            </div>
-            
-            <div class="invoice-details">
+            <div class="reminder-details">
               <h3>Invoice #${invoiceData.invoiceNumber}</h3>
-              <p><strong>Original Due Date:</strong> ${new Date(invoiceData.dueDate).toLocaleDateString()}</p>
+              <p><strong>Due Date:</strong> ${new Date(invoiceData.dueDate).toLocaleDateString()}</p>
               <p><strong>Days Overdue:</strong> ${daysOverdue} days</p>
+              <p><strong>Status:</strong> Overdue</p>
             </div>
             
             <div class="amount">
-              Amount Due: ${invoiceData.clientCurrency || '$'}${invoiceData.amount.toFixed(2)}
+              Outstanding Amount: ${invoiceData.clientCurrency || '$'}${invoiceData.amount.toFixed(2)}
             </div>
             
             ${invoiceData.paymentLink ? `
@@ -370,19 +272,14 @@ export class EmailService {
               </div>
             ` : ''}
             
-            <p><strong>Important:</strong> If you have already made this payment, please disregard this reminder and contact us with your payment confirmation.</p>
-            
-            <p>If you're experiencing any issues with payment or need to discuss alternative arrangements, please contact us immediately at ${companyData.email || 'billing@smartinvoice.com'}.</p>
-            
-            <p>We value our business relationship and look forward to resolving this matter promptly.</p>
-            
-            <p>Best regards,<br>
-            ${companyData.name || 'SmartInvoice'} Team</p>
+            <p>Please process this payment as soon as possible to avoid any late fees or service interruptions.</p>
+            <p>If you have already made the payment, please disregard this reminder.</p>
+            <p>Thank you for your prompt attention to this matter.</p>
           </div>
           
           <div class="footer">
             <p><strong>${companyData.name || 'SmartInvoice'}</strong></p>
-            <p>This is an automated reminder. Please contact us if you need assistance.</p>
+            <p>Professional Invoice Management System</p>
           </div>
         </div>
       </body>
@@ -390,115 +287,116 @@ export class EmailService {
     `;
   }
 
-  static generateWelcomeEmail(userData: any): string {
+  static generateWelcomeEmail(userData: User): string {
     return `
       <!DOCTYPE html>
-      <html>
+      <html lang="en">
       <head>
-        <meta charset="utf-8">
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
         <title>Welcome to SmartInvoice</title>
         <style>
-          body { 
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
-            line-height: 1.6; 
-            color: #333; 
-            margin: 0; 
-            padding: 0; 
-            background-color: #f8f9fa;
+          body {
+            font-family: 'Segoe UI', sans-serif;
+            background-color: #f9f9f9;
+            margin: 0;
+            padding: 0;
           }
-          .container { 
-            max-width: 600px; 
-            margin: 0 auto; 
-            background: white; 
-            border-radius: 8px; 
-            overflow: hidden; 
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+          .container {
+            max-width: 600px;
+            margin: auto;
+            background-color: #ffffff;
+            padding: 40px 30px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
           }
-          .header { 
-            background: linear-gradient(135deg, #000 0%, #333 100%); 
-            color: white; 
-            padding: 40px; 
-            text-align: center; 
+          .header {
+            text-align: center;
+            margin-bottom: 30px;
           }
-          .content { 
-            padding: 40px; 
+          .header h1 {
+            color: #1a1a1a;
+            font-size: 24px;
+            margin-bottom: 5px;
           }
-          .feature { 
-            display: flex; 
-            align-items: center; 
-            margin: 20px 0; 
-            padding: 15px; 
-            background: #f8f9fa; 
-            border-radius: 6px; 
+          .header p {
+            color: #666;
+            font-size: 14px;
           }
-          .button { 
-            display: inline-block; 
-            padding: 15px 30px; 
-            background: #000; 
-            color: white; 
-            text-decoration: none; 
-            border-radius: 6px; 
-            font-weight: 600; 
-            text-align: center; 
-            margin: 20px 0; 
+          .body {
+            color: #333;
+            font-size: 16px;
+            line-height: 1.6;
+          }
+          .features {
+            margin-top: 20px;
+            padding-left: 20px;
+          }
+          .features li {
+            margin-bottom: 10px;
+          }
+          .cta {
+            display: block;
+            margin: 30px 0;
+            padding: 12px 20px;
+            text-align: center;
+            background-color: #4F46E5;
+            color: #fff;
+            text-decoration: none;
+            border-radius: 6px;
+            font-weight: bold;
+          }
+          .footer {
+            margin-top: 40px;
+            font-size: 14px;
+            color: #888;
+            text-align: center;
+          }
+          .signature {
+            margin-top: 30px;
+            font-size: 16px;
+          }
+          .signature strong {
+            display: block;
+            margin-top: 6px;
+            font-size: 15px;
           }
         </style>
       </head>
       <body>
         <div class="container">
           <div class="header">
-            <h1>🎉 Welcome to SmartInvoice!</h1>
-            <p>Your professional invoicing journey starts here</p>
+            <h1>Welcome to SmartInvoice!</h1>
+            <p>Your professional invoice management solution</p>
           </div>
-          
-          <div class="content">
-            <h2>Hello ${userData.name},</h2>
-            <p>Thank you for joining SmartInvoice! We're excited to help you streamline your invoicing process and get paid faster.</p>
-            
-            <h3>What you can do with SmartInvoice:</h3>
-            
-            <div class="feature">
-              <span style="margin-right: 15px; font-size: 24px;">📄</span>
-              <div>
-                <strong>Create Professional Invoices</strong><br>
-                Beautiful, customizable templates with your branding
-              </div>
+          <div class="body">
+            <p>Hello ${userData.name},</p>
+            <p>Welcome to <strong>SmartInvoice</strong>! We're excited to have you on board. You're now one step closer to simplifying and elevating your invoicing process.</p>
+
+            <p><strong>With SmartInvoice, you can:</strong></p>
+            <ul class="features">
+              <li>Create beautiful, professional invoices in seconds</li>
+              <li>Track payments and manage overdue invoices with ease</li>
+              <li>Send automatic payment reminders to clients</li>
+              <li>Generate real-time reports and smart analytics</li>
+              <li>Maintain an organized client database</li>
+              <li>Export invoice data to CSV for accounting tools</li>
+            </ul>
+
+            <a href="${appConfig.app.url}/dashboard" class="cta">Get Started Now</a>
+
+            <p>If you ever have questions or need help, our team is just a message away.</p>
+
+            <div class="signature">
+              Warm regards,<br />
+              <strong>Harsh Bhardwaj</strong><br />
+              Cofounder & CEO, SmartInvoice
             </div>
-            
-            <div class="feature">
-              <span style="margin-right: 15px; font-size: 24px;">💰</span>
-              <div>
-                <strong>Get Paid Faster</strong><br>
-                Integrated payment links and automated reminders
-              </div>
-            </div>
-            
-            <div class="feature">
-              <span style="margin-right: 15px; font-size: 24px;">📊</span>
-              <div>
-                <strong>Track Your Business</strong><br>
-                Analytics dashboard with insights and reports
-              </div>
-            </div>
-            
-            <div class="feature">
-              <span style="margin-right: 15px; font-size: 24px;">🤖</span>
-              <div>
-                <strong>Smart Features</strong><br>
-                Auto-suggestions and intelligent client management
-              </div>
-            </div>
-            
-            <div style="text-align: center; margin: 30px 0;">
-              <a href="${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/dashboard" class="button">
-                Get Started Now
-              </a>
-            </div>
-            
-            <p>If you have any questions or need help getting started, don't hesitate to reach out to our support team.</p>
-            
-            <p>Happy invoicing!<br>
-            The SmartInvoice Team</p>
+          </div>
+
+          <div class="footer">
+            SmartInvoice – Professional Invoice Management<br />
+            Need help? Contact us at support@smartinvoice.com
           </div>
         </div>
       </body>

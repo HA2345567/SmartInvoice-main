@@ -15,6 +15,7 @@ import { Plus, Trash2, Save, Eye, Send, AlertCircle, Search, User, Building, Mai
 import { useToast } from '@/hooks/use-toast';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
+import jsPDF from 'jspdf';
 
 interface InvoiceItem {
   id: string;
@@ -65,6 +66,13 @@ export default function CreateInvoice() {
     taxRate: 0,
     discountRate: 0,
     paymentLink: '',
+    theme: 'professional' as 'professional' | 'modern' | 'luxury' | 'minimal' | 'elegant-black-gold' | 'minimal-white-silver' | 'ivory-serif-classic' | 'modern-rose-gold',
+    customColors: {
+      primary: '#0d3c61',
+      secondary: '#0ea5e9',
+      accent: '#10b981',
+      background: '#f8fafc'
+    }
   });
 
   useEffect(() => {
@@ -241,6 +249,18 @@ export default function CreateInvoice() {
       });
       return false;
     }
+    if (!invoiceData.dueDate || invoiceData.dueDate.trim() === '') {
+      // Set default due date if missing
+      const dueDate = new Date(invoiceData.date);
+      dueDate.setDate(dueDate.getDate() + 30);
+      setInvoiceData(prev => ({ ...prev, dueDate: dueDate.toISOString().split('T')[0] }));
+      toast({
+        title: 'Validation Error',
+        description: 'Due date was missing and has been set to 30 days from invoice date.',
+        variant: 'destructive',
+      });
+      return false;
+    }
 
     if (!invoiceData.clientEmail.trim()) {
       toast({
@@ -296,15 +316,6 @@ export default function CreateInvoice() {
         });
         return false;
       }
-    }
-
-    if (!invoiceData.dueDate) {
-      toast({
-        title: 'Validation Error',
-        description: 'Due date is required.',
-        variant: 'destructive',
-      });
-      return false;
     }
 
     return true;
@@ -419,11 +430,138 @@ export default function CreateInvoice() {
     setShowPreviewDialog(true);
   };
 
+  const handleSimplePDF = () => {
+    let y = 20;
+    const doc = new jsPDF();
+    const currency = invoiceData.clientCurrency || '$';
+
+    doc.setFontSize(16);
+    doc.text(`Invoice Number: ${invoiceData.invoiceNumber || 'N/A'}`, 10, y);
+    y += 10;
+    doc.text(`Client: ${invoiceData.clientName || 'N/A'}`, 10, y);
+    y += 10;
+    doc.text(`Email: ${invoiceData.clientEmail || 'N/A'}`, 10, y);
+    y += 15;
+    doc.setFontSize(14);
+    doc.text('Items:', 10, y);
+    y += 10;
+    doc.setFontSize(12);
+    invoiceData.items.forEach((item, idx) => {
+      doc.text(
+        `${item.description || 'N/A'} | Qty: ${item.quantity} | Rate: ${currency}${item.rate} | Amount: ${currency}${item.amount}`,
+        10,
+        y
+      );
+      y += 8;
+    });
+    y += 10;
+    doc.setFontSize(14);
+    doc.text(`Subtotal: ${currency}${calculateSubtotal().toFixed(2)}`, 10, y);
+    y += 8;
+    doc.text(`Total: ${currency}${calculateTotal().toFixed(2)}`, 10, y);
+
+    // Optional: Add notes and terms
+    if (invoiceData.notes) {
+      y += 12;
+      doc.setFontSize(12);
+      doc.text('Notes:', 10, y);
+      y += 8;
+      doc.text(invoiceData.notes, 10, y);
+    }
+    if (invoiceData.terms) {
+      y += 12;
+      doc.setFontSize(12);
+      doc.text('Terms:', 10, y);
+      y += 8;
+      doc.text(invoiceData.terms, 10, y);
+    }
+
+    doc.save(`invoice-${invoiceData.invoiceNumber || 'N/A'}.pdf`);
+  };
+
   const filteredClients = clients.filter(client =>
     client.name.toLowerCase().includes(clientSearch.toLowerCase()) ||
     client.email.toLowerCase().includes(clientSearch.toLowerCase()) ||
     (client.company && client.company.toLowerCase().includes(clientSearch.toLowerCase()))
   );
+
+  const rgbToHex = (r: number, g: number, b: number) => {
+    return '#' + [r, g, b].map(x => {
+      const hex = x.toString(16);
+      return hex.length === 1 ? '0' + hex : hex;
+    }).join('');
+  };
+
+  const hexToRgb = (hex: string) => {
+    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+    return result ? {
+      r: parseInt(result[1], 16),
+      g: parseInt(result[2], 16),
+      b: parseInt(result[3], 16)
+    } : null;
+  };
+
+  const themeSchemes = {
+    professional: {
+      primary: '#0d3c61',
+      secondary: '#0ea5e9',
+      accent: '#10b981',
+      background: '#f8fafc'
+    },
+    modern: {
+      primary: '#4f46e5',
+      secondary: '#8b5cf6',
+      accent: '#ec4899',
+      background: '#f9fafb'
+    },
+    luxury: {
+      primary: '#713f12',
+      secondary: '#d97706',
+      accent: '#f59e0b',
+      background: '#fefce8'
+    },
+    minimal: {
+      primary: '#1f2937',
+      secondary: '#4b5563',
+      accent: '#6366f1',
+      background: '#ffffff'
+    },
+    'elegant-black-gold': {
+      primary: '#000000',
+      secondary: '#d4af37',
+      accent: '#ffd700',
+      background: '#0f0f0f'
+    },
+    'minimal-white-silver': {
+      primary: '#404040',
+      secondary: '#c0c0c0',
+      accent: '#808080',
+      background: '#ffffff'
+    },
+    'ivory-serif-classic': {
+      primary: '#8b4513',
+      secondary: '#a0522d',
+      accent: '#cd853f',
+      background: '#fffff0'
+    },
+    'modern-rose-gold': {
+      primary: '#bc8f8f',
+      secondary: '#ffb6c1',
+      accent: '#ffc0cb',
+      background: '#ffffff'
+    }
+  };
+
+  const themeDescriptions = {
+    professional: 'Perfect for corporate and business invoices',
+    modern: 'Clean and contemporary design for tech companies',
+    luxury: 'Premium feel for high-end services and products',
+    minimal: 'Simple and elegant for any business type',
+    'elegant-black-gold': 'Sophisticated dark theme with gold accents',
+    'minimal-white-silver': 'Ultra-clean white design with silver elements',
+    'ivory-serif-classic': 'Traditional and formal for law firms and finance',
+    'modern-rose-gold': 'Elegant and feminine for lifestyle and wellness'
+  };
 
   return (
     <div className="space-y-8 animate-fade-in">
@@ -451,6 +589,15 @@ export default function CreateInvoice() {
           >
             <Download className="w-4 h-4 mr-2" />
             {previewLoading ? 'Generating...' : 'Premium PDF'}
+          </Button>
+          <Button 
+            variant="outline" 
+            onClick={handleSimplePDF} 
+            className="btn-green-secondary"
+            disabled={loading || previewLoading}
+          >
+            <Download className="w-4 h-4 mr-2" />
+            Download Simple PDF
           </Button>
           <Button 
             onClick={() => handleSave('draft')} 
@@ -516,6 +663,192 @@ export default function CreateInvoice() {
                   className="input-green"
                   required
                 />
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Theme & Color Customization */}
+          <Card className="card-green-mist animate-slide-in" style={{ animationDelay: '0.05s' }}>
+            <CardHeader>
+              <CardTitle className="text-white flex items-center">
+                <Sparkles className="w-5 h-5 mr-2 text-green-primary" />
+                Theme & Colors
+              </CardTitle>
+              <CardDescription className="text-green-muted">Customize the visual appearance of your invoice</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {/* Theme Selection */}
+              <div className="space-y-3">
+                <Label className="text-white">Choose Theme</Label>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  {(['professional', 'modern', 'luxury', 'minimal', 'elegant-black-gold', 'minimal-white-silver', 'ivory-serif-classic', 'modern-rose-gold'] as const).map((theme) => (
+                    <div
+                      key={theme}
+                      className={`relative cursor-pointer rounded-lg border-2 p-3 transition-all hover:scale-105 ${
+                        invoiceData.theme === theme 
+                          ? 'border-green-primary bg-green-primary/10' 
+                          : 'border-gray-600 hover:border-green-primary/50'
+                      }`}
+                      onClick={() => {
+                        setInvoiceData(prev => ({
+                          ...prev,
+                          theme,
+                          customColors: themeSchemes[theme]
+                        }));
+                      }}
+                    >
+                      <div className="space-y-2">
+                        <div className="flex space-x-1">
+                          <div 
+                            className="w-3 h-3 rounded-full" 
+                            style={{ backgroundColor: themeSchemes[theme].primary }}
+                          />
+                          <div 
+                            className="w-3 h-3 rounded-full" 
+                            style={{ backgroundColor: themeSchemes[theme].secondary }}
+                          />
+                          <div 
+                            className="w-3 h-3 rounded-full" 
+                            style={{ backgroundColor: themeSchemes[theme].accent }}
+                          />
+                        </div>
+                        <span className="text-xs font-medium text-white capitalize">
+                          {theme.replace('-', ' ')}
+                        </span>
+                      </div>
+                      {invoiceData.theme === theme && (
+                        <div className="absolute -top-1 -right-1 w-4 h-4 bg-green-primary rounded-full flex items-center justify-center">
+                          <div className="w-2 h-2 bg-white rounded-full" />
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Custom Color Picker */}
+              <div className="space-y-4">
+                <Label className="text-white">Customize Colors</Label>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="space-y-2">
+                    <Label className="text-white text-sm">Primary</Label>
+                    <div className="flex items-center space-x-2">
+                      <input
+                        type="color"
+                        value={invoiceData.customColors.primary}
+                        onChange={(e) => setInvoiceData(prev => ({
+                          ...prev,
+                          customColors: { ...prev.customColors, primary: e.target.value }
+                        }))}
+                        className="w-10 h-10 rounded border-2 border-gray-600 cursor-pointer"
+                      />
+                      <Input
+                        value={invoiceData.customColors.primary}
+                        onChange={(e) => setInvoiceData(prev => ({
+                          ...prev,
+                          customColors: { ...prev.customColors, primary: e.target.value }
+                        }))}
+                        className="input-green text-sm"
+                        placeholder="#000000"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label className="text-white text-sm">Secondary</Label>
+                    <div className="flex items-center space-x-2">
+                      <input
+                        type="color"
+                        value={invoiceData.customColors.secondary}
+                        onChange={(e) => setInvoiceData(prev => ({
+                          ...prev,
+                          customColors: { ...prev.customColors, secondary: e.target.value }
+                        }))}
+                        className="w-10 h-10 rounded border-2 border-gray-600 cursor-pointer"
+                      />
+                      <Input
+                        value={invoiceData.customColors.secondary}
+                        onChange={(e) => setInvoiceData(prev => ({
+                          ...prev,
+                          customColors: { ...prev.customColors, secondary: e.target.value }
+                        }))}
+                        className="input-green text-sm"
+                        placeholder="#000000"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label className="text-white text-sm">Accent</Label>
+                    <div className="flex items-center space-x-2">
+                      <input
+                        type="color"
+                        value={invoiceData.customColors.accent}
+                        onChange={(e) => setInvoiceData(prev => ({
+                          ...prev,
+                          customColors: { ...prev.customColors, accent: e.target.value }
+                        }))}
+                        className="w-10 h-10 rounded border-2 border-gray-600 cursor-pointer"
+                      />
+                      <Input
+                        value={invoiceData.customColors.accent}
+                        onChange={(e) => setInvoiceData(prev => ({
+                          ...prev,
+                          customColors: { ...prev.customColors, accent: e.target.value }
+                        }))}
+                        className="input-green text-sm"
+                        placeholder="#000000"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label className="text-white text-sm">Background</Label>
+                    <div className="flex items-center space-x-2">
+                      <input
+                        type="color"
+                        value={invoiceData.customColors.background}
+                        onChange={(e) => setInvoiceData(prev => ({
+                          ...prev,
+                          customColors: { ...prev.customColors, background: e.target.value }
+                        }))}
+                        className="w-10 h-10 rounded border-2 border-gray-600 cursor-pointer"
+                      />
+                      <Input
+                        value={invoiceData.customColors.background}
+                        onChange={(e) => setInvoiceData(prev => ({
+                          ...prev,
+                          customColors: { ...prev.customColors, background: e.target.value }
+                        }))}
+                        className="input-green text-sm"
+                        placeholder="#000000"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Color Preview */}
+              <div className="space-y-2">
+                <Label className="text-white text-sm">Preview</Label>
+                <div className="flex space-x-2">
+                  <div 
+                    className="w-8 h-8 rounded border border-gray-600"
+                    style={{ backgroundColor: invoiceData.customColors.primary }}
+                  />
+                  <div 
+                    className="w-8 h-8 rounded border border-gray-600"
+                    style={{ backgroundColor: invoiceData.customColors.secondary }}
+                  />
+                  <div 
+                    className="w-8 h-8 rounded border border-gray-600"
+                    style={{ backgroundColor: invoiceData.customColors.accent }}
+                  />
+                  <div 
+                    className="w-8 h-8 rounded border border-gray-600"
+                    style={{ backgroundColor: invoiceData.customColors.background }}
+                  />
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -973,7 +1306,7 @@ export default function CreateInvoice() {
                 <div>
                   <h3 className="font-semibold text-slate-900 mb-4">BILL TO</h3>
                   <div className="bg-slate-50 p-4 rounded-lg">
-                    <p className="font-semibold text-slate-900">{invoiceData.clientName}</p>
+                    <p className="font-semibold text-slate-900">{invoiceData.clientName || 'No Client'}</p>
                     {invoiceData.clientCompany && (
                       <p className="text-slate-600">{invoiceData.clientCompany}</p>
                     )}

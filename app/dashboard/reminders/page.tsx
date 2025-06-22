@@ -379,10 +379,10 @@ export default function RemindersPage() {
                   <div className="text-right">
                     <p className="font-bold text-white text-lg flex items-center">
                       <DollarSign className="w-4 h-4 mr-1" />
-                      {invoice.amount.toFixed(2)}
+                      {(invoice.amount || 0).toFixed(2)}
                     </p>
                     <p className="text-sm text-red-400">
-                      Due {format(new Date(invoice.dueDate), 'MMM dd, yyyy')}
+                      Due {invoice.dueDate ? format(new Date(invoice.dueDate), 'MMM dd, yyyy') : 'Not set'}
                     </p>
                   </div>
                 </div>
@@ -438,14 +438,14 @@ export default function RemindersPage() {
                         </span>
                         <span className="flex items-center">
                           <Calendar className="w-3 h-3 mr-1" />
-                          Due {format(new Date(invoice.dueDate), 'MMM dd')}
+                          Due {invoice.dueDate ? format(new Date(invoice.dueDate), 'MMM dd, yyyy') : 'Not set'}
                         </span>
                       </div>
                     </div>
                   </div>
                   
                   <div className="text-right">
-                    <p className="font-bold text-white text-lg">${invoice.amount.toFixed(2)}</p>
+                    <p className="font-bold text-white text-lg">{(invoice.amount || 0).toFixed(2)}</p>
                     <p className="text-sm text-red-400">
                       {invoice.daysOverdue} days overdue
                     </p>
@@ -498,7 +498,7 @@ export default function RemindersPage() {
                     </div>
                     
                     <div className="text-right">
-                      <p className="font-bold text-white text-lg">${escalation.invoice.amount.toFixed(2)}</p>
+                      <p className="font-bold text-white text-lg">{(escalation.invoice.amount || 0).toFixed(2)}</p>
                       <p className="text-sm text-red-400">
                         {escalation.invoice.daysOverdue} days overdue
                       </p>

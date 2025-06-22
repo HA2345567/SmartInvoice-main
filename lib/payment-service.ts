@@ -25,14 +25,23 @@ export interface PaymentStatus {
   paid_at?: number;
 }
 
+export interface Invoice {
+  id: string;
+  invoiceNumber: string;
+  amount: number;
+  clientName: string;
+  clientEmail: string;
+  clientCurrency: string;
+}
+
 export class PaymentService {
   private apiKey: string;
   private apiSecret: string;
   private baseUrl: string;
 
-  constructor(apiKey: string, apiSecret: string) {
-    this.apiKey = apiKey;
-    this.apiSecret = apiSecret;
+  constructor(apiKey?: string, apiSecret?: string) {
+    this.apiKey = apiKey || process.env.RAZORPAY_KEY_ID || '';
+    this.apiSecret = apiSecret || process.env.RAZORPAY_KEY_SECRET || '';
     this.baseUrl = 'https://api.razorpay.com/v1';
   }
 
@@ -46,6 +55,11 @@ export class PaymentService {
       console.error('Failed to create payment link:', error);
       return null;
     }
+  }
+
+  async createPaymentLinkForInvoice(invoice: Invoice): Promise<string | null> {
+    const paymentData = PaymentService.generatePaymentLink(invoice);
+    return this.createPaymentLink(paymentData);
   }
 
   async getPaymentStatus(paymentLinkId: string): Promise<PaymentStatus | null> {

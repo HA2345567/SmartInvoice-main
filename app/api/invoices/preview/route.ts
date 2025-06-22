@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { AuthService } from '@/lib/auth';
-import { PDFGenerator } from '@/lib/pdf-generator';
+import { PremiumPDFGenerator } from '@/lib/pdf-generator';
 
 export async function POST(request: NextRequest) {
   try {
@@ -11,7 +11,7 @@ export async function POST(request: NextRequest) {
 
     const invoiceData = await request.json();
 
-    const generator = new PDFGenerator();
+    const generator = new PremiumPDFGenerator();
     const pdfBuffer = generator.generatePDF({
       invoiceNumber: invoiceData.invoiceNumber,
       date: invoiceData.date,
@@ -33,9 +33,14 @@ export async function POST(request: NextRequest) {
       discountRate: invoiceData.discountRate,
       paymentLink: invoiceData.paymentLink,
       companyName: user.company || 'SmartInvoice',
-      companyAddress: 'Your Company Address\nCity, State - PIN',
-      companyGST: 'Your GST Number',
+      companyAddress: user.companyAddress || 'Your Company Address\nCity, State - PIN',
+      companyGST: user.companyGST || 'Your GST Number',
       companyEmail: user.email,
+      companyPhone: user.companyPhone || '',
+      companyWebsite: user.companyWebsite || '',
+      invoiceStatus: 'PENDING',
+      theme: invoiceData.theme || 'professional',
+      customColors: invoiceData.customColors
     });
 
     return new NextResponse(pdfBuffer, {

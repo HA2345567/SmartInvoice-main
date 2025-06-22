@@ -8,11 +8,55 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { FileText, Eye, Download, Send, Trash2, Search, Filter, Plus, CheckCircle, Clock, AlertTriangle, Edit, Calendar, DollarSign, CreditCard, FileDown, Sparkles } from 'lucide-react';
+import { FileText, Eye, Download, Send, Trash2, Search, Filter, Plus, CheckCircle, Clock, AlertTriangle, Edit, Calendar, DollarSign, CreditCard, FileDown, Sparkles, TrendingUp, Users, Zap, AlertCircle, BarChart3 } from 'lucide-react';
 import Link from 'next/link';
 import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
 import { useAuth } from '@/contexts/AuthContext';
+
+// Helper function to safely format dates
+const formatDate = (dateString: string | null | undefined, formatString: string = 'MMM dd, yyyy') => {
+  if (!dateString) return 'N/A';
+  try {
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return 'Invalid Date';
+    return format(date, formatString);
+  } catch (error) {
+    return 'Invalid Date';
+  }
+};
+
+// Helper function to safely format currency amounts
+const formatCurrency = (amount: number | null | undefined) => {
+  if (amount === null || amount === undefined || isNaN(amount)) return '0.00';
+  return Number(amount).toFixed(2);
+};
+
+interface Analytics {
+  totalRevenue: number;
+  totalInvoices: number;
+  paidInvoices: number;
+  pendingInvoices: number;
+  averageInvoiceValue: number;
+  monthlyData: Array<{
+    month: string;
+    revenue: number;
+    invoices: number;
+  }>;
+  topClients: Array<{
+    id: string;
+    name: string;
+    company?: string;
+    totalAmount: number;
+    totalInvoices: number;
+  }>;
+  invoiceStatusDistribution: {
+    paid: number;
+    pending: number;
+    draft: number;
+    overdue: number;
+  };
+}
 
 interface Invoice {
   id: string;
@@ -82,13 +126,18 @@ export default function InvoicesPage() {
     notes: ''
   });
   const { toast } = useToast();
-  const { token } = useAuth();
+  const { token, loading: authLoading } = useAuth();
 
   useEffect(() => {
-    if (token) {
+    // Only fetch invoices if authentication is complete and we have a token.
+    if (!authLoading && token) {
       fetchInvoices();
     }
-  }, [token]);
+    // If auth is not loading and there's no token, we can stop the page's loading state.
+    if (!authLoading && !token) {
+      setLoading(false);
+    }
+  }, [token, authLoading]);
 
   useEffect(() => {
     filterInvoices();
@@ -122,11 +171,12 @@ export default function InvoicesPage() {
     let filtered = invoices;
 
     if (searchTerm) {
+      const lowercasedSearchTerm = searchTerm.toLowerCase();
       filtered = filtered.filter(
         invoice =>
-          invoice.invoiceNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          invoice.clientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          invoice.clientEmail.toLowerCase().includes(searchTerm.toLowerCase())
+          (invoice.invoiceNumber || '').toLowerCase().includes(lowercasedSearchTerm) ||
+          (invoice.clientName || '').toLowerCase().includes(lowercasedSearchTerm) ||
+          (invoice.clientEmail || '').toLowerCase().includes(lowercasedSearchTerm)
       );
     }
 
@@ -185,7 +235,7 @@ export default function InvoicesPage() {
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `invoices-export-${format(new Date(), 'yyyy-MM-dd')}.csv`;
+        a.download = `invoices-export-${formatDate(new Date().toISOString(), 'yyyy-MM-dd')}.csv`;
         document.body.appendChild(a);
         a.click();
         window.URL.revokeObjectURL(url);
@@ -427,6 +477,13 @@ export default function InvoicesPage() {
 
   const getStatusBadge = (status: string) => {
     const config = statusConfig[status as keyof typeof statusConfig];
+    if (!config) {
+      return (
+        <Badge className="bg-gray-500/20 text-gray-300 border-gray-500/30">
+          Unknown
+        </Badge>
+      );
+    }
     const Icon = config.icon;
     
     return (
@@ -438,12 +495,31 @@ export default function InvoicesPage() {
   };
 
   const getDaysOverdue = (dueDate: string) => {
-    const due = new Date(dueDate);
-    const today = new Date();
-    const diffTime = today.getTime() - due.getTime();
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    return diffDays;
+    if (!dueDate) return 0;
+    
+    try {
+      const due = new Date(dueDate);
+      if (isNaN(due.getTime())) return 0;
+      
+      const today = new Date();
+      const diffTime = today.getTime() - due.getTime();
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      return diffDays;
+    } catch (error) {
+      return 0;
+    }
   };
+
+  if (authLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="text-center">
+          <div className="spinner-green w-12 h-12 mx-auto mb-4"></div>
+          <p className="text-green-muted">Authenticating...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (loading) {
     return (
@@ -635,18 +711,18 @@ export default function InvoicesPage() {
                     </div>
                     <div>
                       <div className="flex items-center space-x-3 mb-1">
-                        <p className="font-semibold text-white text-lg">{invoice.invoiceNumber}</p>
+                        <p className="font-semibold text-white text-lg">{invoice.invoiceNumber || '---'}</p>
                         {getStatusBadge(invoice.status)}
                       </div>
-                      <p className="text-green-muted">{invoice.clientName}</p>
+                      <p className="text-green-muted">{invoice.clientName || 'No Client'}</p>
                       <div className="flex items-center space-x-4 text-sm text-green-muted mt-1">
                         <span className="flex items-center">
                           <Calendar className="w-3 h-3 mr-1" />
-                          Created {format(new Date(invoice.createdAt), 'MMM dd, yyyy')}
+                          Created {formatDate(invoice.createdAt)}
                         </span>
                         <span className="flex items-center">
                           <Clock className="w-3 h-3 mr-1" />
-                          Due {format(new Date(invoice.dueDate), 'MMM dd, yyyy')}
+                          Due {formatDate(invoice.dueDate)}
                           {invoice.status === 'overdue' && (
                             <span className="ml-1 text-red-400">
                               ({getDaysOverdue(invoice.dueDate)} days overdue)
@@ -657,7 +733,7 @@ export default function InvoicesPage() {
                       {invoice.paidDate && (
                         <div className="flex items-center space-x-2 text-sm text-green-400 mt-1">
                           <CheckCircle className="w-3 h-3" />
-                          <span>Paid on {format(new Date(invoice.paidDate), 'MMM dd, yyyy')}</span>
+                          <span>Paid on {formatDate(invoice.paidDate)}</span>
                           {invoice.paymentMethod && (
                             <span className="text-green-muted">via {invoice.paymentMethod}</span>
                           )}
@@ -670,10 +746,10 @@ export default function InvoicesPage() {
                     <div className="text-right">
                       <p className="font-bold text-white text-xl flex items-center">
                         <DollarSign className="w-4 h-4 mr-1" />
-                        {invoice.amount.toFixed(2)}
+                        {formatCurrency(invoice.amount)}
                       </p>
                       <p className="text-sm text-green-muted">
-                        Due {format(new Date(invoice.dueDate), 'MMM dd')}
+                        Due {formatDate(invoice.dueDate, 'MMM dd')}
                       </p>
                     </div>
                     
@@ -800,7 +876,7 @@ export default function InvoicesPage() {
               <div className="p-4 bg-green-500/10 rounded-lg border border-green-500/20">
                 <div className="flex justify-between items-center">
                   <span className="text-green-muted">Invoice Amount:</span>
-                  <span className="text-white font-bold text-lg">${selectedInvoice.amount.toFixed(2)}</span>
+                  <span className="text-white font-bold text-lg">${formatCurrency(selectedInvoice.amount)}</span>
                 </div>
               </div>
             )}

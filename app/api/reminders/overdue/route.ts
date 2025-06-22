@@ -15,8 +15,17 @@ export async function GET(request: NextRequest) {
     // Find overdue invoices
     const overdueInvoices = ReminderService.findOverdueInvoices(userInvoices);
     
-    // Get invoices needing reminders
-    const needingReminders = ReminderService.getInvoicesNeedingReminders(overdueInvoices);
+    // Persistently update status to 'overdue' in the database for invoices that are overdue but still marked as 'sent'
+    const updatePromises = overdueInvoices
+      .filter(inv => {
+        const original = userInvoices.find(u => u.id === inv.id);
+        return original && original.status === 'sent';
+      })
+      .map(inv => DatabaseService.updateInvoice(user.id, inv.id, { status: 'overdue' }));
+    await Promise.all(updatePromises);
+    
+    // Show all overdue invoices in Smart Reminders
+    const needingReminders = overdueInvoices;
     
     // Generate reminder statistics
     const stats = ReminderService.generateReminderStats(userInvoices);
